@@ -1,0 +1,96 @@
+{
+  "corpus": [
+    {
+      "doc_id": "transformers",
+      "filename": "transformers.txt",
+      "text": "The Transformer is a deep learning architecture introduced in the 2017 paper 'Attention Is All You Need'. It relies entirely on self-attention mechanisms, removing recurrence and convolutions entirely from sequence modeling.\n\nSelf-attention computes a weighted representation of each token by comparing it against every other token in the sequence using query, key, and value projections. Multi-head attention runs several attention computations in parallel, letting the model attend to different representation subspaces simultaneously.\n\nSince Transformers contain no recurrence, positional encodings are added to token embeddings so the model can use sequence order information."
+    },
+    {
+      "doc_id": "photosynthesis",
+      "filename": "photosynthesis.txt",
+      "text": "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It occurs primarily in the chloroplasts of plant cells, using the pigment chlorophyll to absorb light.\n\nThe process has two main stages: the light-dependent reactions, which occur in the thylakoid membrane and produce ATP and NADPH, and the Calvin cycle, which uses that ATP and NADPH to fix carbon dioxide into glucose.\n\nOxygen is released as a byproduct of the light-dependent reactions when water molecules are split."
+    },
+    {
+      "doc_id": "french_revolution",
+      "filename": "french_revolution.txt",
+      "text": "The French Revolution began in 1789 and fundamentally transformed French society, ending the absolute monarchy and the feudal system. Economic hardship, food shortages, and resentment of aristocratic privilege were major contributing causes.\n\nThe storming of the Bastille on July 14, 1789 became a symbol of the uprising against royal authority. The revolution led to the Declaration of the Rights of Man and of the Citizen, and eventually to the rise of Napoleon Bonaparte.\n\nThe Reign of Terror, from 1793 to 1794, saw mass executions of perceived enemies of the revolution, overseen by the Committee of Public Safety."
+    },
+    {
+      "doc_id": "vector_databases",
+      "filename": "vector_databases.txt",
+      "text": "A vector database stores high-dimensional embedding vectors and supports efficient similarity search, typically using approximate nearest neighbor algorithms like HNSW. This makes it possible to search millions of vectors in milliseconds.\n\nQdrant is an open-source vector database written in Rust. It supports storing arbitrary JSON payloads alongside each vector, filtering search results by payload fields, and multiple distance metrics including cosine similarity and dot product.\n\nVector databases are a core component of retrieval-augmented generation systems, where they store document chunk embeddings for semantic search."
+    },
+    {
+      "doc_id": "whisper_asr",
+      "filename": "whisper_asr.txt",
+      "text": "Whisper is an automatic speech recognition system trained on a large, diverse dataset of multilingual and multitask supervised audio data. It was released by OpenAI and is capable of transcription, translation, and language identification.\n\nThe model uses an encoder-decoder Transformer architecture, processing log-Mel spectrograms of audio and generating text tokens autoregressively.\n\nfaster-whisper is a reimplementation of Whisper using CTranslate2, offering significantly faster inference on both CPU and GPU compared to the original PyTorch implementation."
+    },
+    {
+      "doc_id": "cell_biology",
+      "filename": "cell_biology.txt",
+      "text": "The mitochondrion is often called the powerhouse of the cell because it generates most of the cell's ATP through cellular respiration. It has its own DNA, separate from the nucleus, supporting the theory that mitochondria originated from free-living bacteria.\n\nThe cell membrane, composed of a phospholipid bilayer, regulates what enters and exits the cell through selective permeability and embedded transport proteins.\n\nRibosomes, found either free-floating in the cytoplasm or attached to the endoplasmic reticulum, are responsible for synthesizing proteins by translating messenger RNA."
+    }
+  ],
+  "questions": [
+    {
+      "question": "What is self-attention and how does it compute token representations?",
+      "expected_document_id": "transformers",
+      "expected_keywords": ["attention", "query", "key", "value"]
+    },
+    {
+      "question": "Why are positional encodings added to Transformer inputs?",
+      "expected_document_id": "transformers",
+      "expected_keywords": ["position", "sequence", "order"]
+    },
+    {
+      "question": "What are the two main stages of photosynthesis?",
+      "expected_document_id": "photosynthesis",
+      "expected_keywords": ["light-dependent", "calvin"]
+    },
+    {
+      "question": "What gas is released as a byproduct of photosynthesis?",
+      "expected_document_id": "photosynthesis",
+      "expected_keywords": ["oxygen"]
+    },
+    {
+      "question": "What event on July 14 1789 symbolized the uprising against the French monarchy?",
+      "expected_document_id": "french_revolution",
+      "expected_keywords": ["bastille"]
+    },
+    {
+      "question": "What was the Reign of Terror?",
+      "expected_document_id": "french_revolution",
+      "expected_keywords": ["executions", "committee"]
+    },
+    {
+      "question": "What algorithm do vector databases typically use for approximate nearest neighbor search?",
+      "expected_document_id": "vector_databases",
+      "expected_keywords": ["hnsw"]
+    },
+    {
+      "question": "What programming language is Qdrant written in?",
+      "expected_document_id": "vector_databases",
+      "expected_keywords": ["rust"]
+    },
+    {
+      "question": "What architecture does Whisper use for speech recognition?",
+      "expected_document_id": "whisper_asr",
+      "expected_keywords": ["encoder-decoder", "transformer"]
+    },
+    {
+      "question": "Why is faster-whisper faster than the original Whisper implementation?",
+      "expected_document_id": "whisper_asr",
+      "expected_keywords": ["ctranslate2"]
+    },
+    {
+      "question": "Why is the mitochondrion called the powerhouse of the cell?",
+      "expected_document_id": "cell_biology",
+      "expected_keywords": ["atp", "respiration"]
+    },
+    {
+      "question": "What is the role of ribosomes in a cell?",
+      "expected_document_id": "cell_biology",
+      "expected_keywords": ["protein", "translat"]
+    }
+  ]
+}

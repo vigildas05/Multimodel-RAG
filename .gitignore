@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+!.env.example
+
+# Backend data
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+backend/data/registry.db
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Model caches
+.paddleocr/
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
