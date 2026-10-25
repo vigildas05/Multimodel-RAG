@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY eval ./eval
+COPY alembic.ini ./
+COPY migrations ./migrations
 
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 ENV PYTHONUNBUFFERED=1

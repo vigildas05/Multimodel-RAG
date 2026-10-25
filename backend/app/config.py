@@ -10,10 +10,15 @@ class Settings(BaseSettings):
     # --- Server ---
     CORS_ORIGINS: str = "http://localhost:5173"
 
+    # --- Database ---
+    # SQLAlchemy URL; psycopg 3 driver. For Neon, append ?sslmode=require.
+    DATABASE_URL: str = "postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel"
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+
     # --- Storage ---
     DATA_DIR: str = "data"
     UPLOAD_DIR: str = "data/uploads"
-    REGISTRY_DB_PATH: str = "data/registry.db"
     MAX_UPLOAD_SIZE_MB: int = 25
     ALLOWED_EXTENSIONS: str = ".pdf,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.ogg,.flac"
 
@@ -75,12 +80,6 @@ class Settings(BaseSettings):
     def upload_dir_path(self) -> Path:
         path = Path(self.UPLOAD_DIR)
         path.mkdir(parents=True, exist_ok=True)
-        return path
-
-    @property
-    def registry_db_full_path(self) -> Path:
-        path = Path(self.REGISTRY_DB_PATH)
-        path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
 

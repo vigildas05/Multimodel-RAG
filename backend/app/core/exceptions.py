@@ -45,6 +45,11 @@ class VectorStoreUnavailableError(AppError):
     error_type = "vector_store_unavailable"
 
 
+class DatabaseUnavailableError(AppError):
+    status_code = 503
+    error_type = "database_unavailable"
+
+
 class LLMProviderError(AppError):
     status_code = 502
     error_type = "llm_provider_error"

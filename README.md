@@ -43,7 +43,7 @@ swappable local/hosted LLM backend.
 | Sparse retrieval | rank_bm25 |
 | Vector DB | Qdrant |
 | LLM generation & vision | Ollama (local, default: `llama3.2:3b` + `moondream`) |
-| Document registry | SQLite |
+| Document registry | PostgreSQL (SQLAlchemy + Alembic) |
 | Infra | Docker, Docker Compose |
 
 ## Project structure
@@ -106,14 +106,15 @@ ollama pull moondream
 (Sized to run on a 4GB-VRAM GPU. Swap in larger models — e.g. `llama3.1:8b`, `llava` — in
 `.env` if you have more VRAM to spare.)
 
-### 3. Start Qdrant
+### 3. Start Postgres, Redis and Qdrant
 
 ```bash
-docker compose up -d qdrant
+docker compose up -d postgres redis qdrant
 ```
 
 The backend creates the `document_chunks` collection automatically on first startup — no
 manual setup needed. Qdrant's dashboard is browsable at `http://localhost:6333/dashboard`.
+Postgres also gets a separate `sentinel_test` database for the test suite.
 
 ### 4. Run the backend
 
@@ -122,6 +123,7 @@ cd backend
 python -m venv venv
 ./venv/Scripts/activate        # Windows; use `source venv/bin/activate` on macOS/Linux
 pip install -r requirements.txt
+alembic upgrade head           # create / migrate the Postgres schema
 uvicorn app.main:app --reload --port 8000
 ```
 

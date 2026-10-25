@@ -30,7 +30,7 @@ def _make_test_pdf_bytes() -> bytes:
 
 
 @pytest.fixture(scope="module")
-def client():
+def client(db_engine):  # db_engine: migrated Postgres test database
     from app.main import create_app
 
     with TestClient(create_app()) as c:

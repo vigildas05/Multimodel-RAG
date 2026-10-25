@@ -1,4 +1,35 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag-postgres
+    # Local development credentials only. Deployed environments use Neon via DATABASE_URL.
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Creates the separate sentinel_test database used by the test suite.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   qdrant:
     image: qdrant/qdrant:latest
     container_name: rag-qdrant
@@ -22,11 +53,19 @@ services:
       - ./backend/.env
     environment:
       QDRANT_HOST: qdrant
+      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@postgres:5432/sentinel
       # Ollama runs on the HOST (not in Compose) since GPU passthrough into a Windows/Mac
       # Docker container is unnecessary friction for a local model server. The backend
       # reaches it via the Docker-provided host gateway alias.
       OLLAMA_BASE_URL: http://host.docker.internal:11434
+    # Apply pending migrations before serving. (Production runs migrations as a separate
+    # one-shot step instead; see docs/DEPLOYMENT.md once it exists.)
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       qdrant:
         condition: service_healthy
     volumes:
@@ -35,4 +74,5 @@ services:
       - "host.docker.internal:host-gateway"
 
 volumes:
+  postgres_data:
   qdrant_data:

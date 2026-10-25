@@ -13,7 +13,7 @@ venv/
 # Backend data
 backend/data/uploads/*
 !backend/data/uploads/.gitkeep
-backend/data/registry.db
+backend/data/*.db
 
 # Node / frontend
 node_modules/

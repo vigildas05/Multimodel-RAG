@@ -3,10 +3,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
+from app.core.exceptions import DatabaseUnavailableError
 from app.core.logging_config import configure_logging
+from app.db.bootstrap import ensure_local_workspace
+from app.db.session import create_db_engine, create_session_factory
 from app.dependencies import get_app_settings
 from app.routers import audio, chat, documents, images, search
 from app.services.bm25_service import BM25Service
@@ -30,7 +34,17 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info("Starting up: loading models and connecting to services...")
 
-    app.state.registry = DocumentRegistry(settings.registry_db_full_path)
+    app.state.db_engine = create_db_engine(settings)
+    app.state.session_factory = create_session_factory(app.state.db_engine)
+    try:
+        # TEMPORARY until step 1.3: everything runs in one local workspace (see db/bootstrap.py).
+        local_workspace_id = ensure_local_workspace(app.state.session_factory)
+    except SQLAlchemyError as exc:
+        raise DatabaseUnavailableError(
+            "Could not initialize the database. Is Postgres running and migrated?",
+            detail="Run `docker compose up -d postgres` and `alembic upgrade head` from backend/.",
+        ) from exc
+    app.state.registry = DocumentRegistry(app.state.session_factory, local_workspace_id)
     app.state.embedding_service = EmbeddingService.get_instance(
         settings.EMBEDDING_MODEL_NAME, settings.EMBEDDING_DEVICE
     )
@@ -77,6 +91,7 @@ async def lifespan(app: FastAPI):
     logger.info("Startup complete.")
     yield
     logger.info("Shutting down.")
+    app.state.db_engine.dispose()
 
 
 def create_app() -> FastAPI:

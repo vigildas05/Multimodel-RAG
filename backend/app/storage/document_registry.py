@@ -1,66 +1,49 @@
-import sqlite3
-import threading
-from contextlib import contextmanager
-from pathlib import Path
+import uuid
+from datetime import datetime
 
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.db.models import Document
 from app.models.document import DocumentRecord
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS documents (
-    document_id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    file_type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    upload_timestamp TEXT NOT NULL,
-    num_chunks INTEGER NOT NULL DEFAULT 0,
-    error_message TEXT,
-    num_pages INTEGER,
-    duration_seconds REAL,
-    used_ocr INTEGER NOT NULL DEFAULT 0
-);
-"""
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return True
 
 
 class DocumentRegistry:
-    """SQLite-backed source of truth for document-level metadata and ingestion status."""
+    """Postgres-backed source of truth for document-level metadata and ingestion status.
 
-    def __init__(self, db_path: Path):
-        self._db_path = db_path
-        self._lock = threading.Lock()
-        with self._connect() as conn:
-            conn.execute(_SCHEMA)
-            conn.commit()
+    Every query is scoped to the registry's workspace: a document ID belonging to another
+    workspace behaves exactly like one that doesn't exist.
+    """
 
-    @contextmanager
-    def _connect(self):
-        conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
+    def __init__(self, session_factory: sessionmaker[Session], workspace_id: str):
+        self._session_factory = session_factory
+        self._workspace_id = workspace_id
 
     def create(self, record: DocumentRecord) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """INSERT INTO documents
-                (document_id, filename, file_type, status, upload_timestamp,
-                 num_chunks, error_message, num_pages, duration_seconds, used_ocr)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    record.document_id,
-                    record.filename,
-                    record.file_type,
-                    record.status,
-                    record.upload_timestamp,
-                    record.num_chunks,
-                    record.error_message,
-                    record.num_pages,
-                    record.duration_seconds,
-                    int(record.used_ocr),
-                ),
+        with self._session_factory.begin() as session:
+            session.add(
+                Document(
+                    id=record.document_id,
+                    workspace_id=self._workspace_id,
+                    filename=record.filename,
+                    file_type=record.file_type,
+                    status=record.status,
+                    num_chunks=record.num_chunks,
+                    error_message=record.error_message,
+                    num_pages=record.num_pages,
+                    duration_seconds=record.duration_seconds,
+                    used_ocr=record.used_ocr,
+                    created_at=datetime.fromisoformat(record.upload_timestamp),
+                )
             )
-            conn.commit()
 
     def update_status(
         self,
@@ -72,60 +55,68 @@ class DocumentRegistry:
         duration_seconds: float | None = None,
         used_ocr: bool | None = None,
     ) -> None:
-        fields = ["status = ?"]
-        values: list = [status]
-        if num_chunks is not None:
-            fields.append("num_chunks = ?")
-            values.append(num_chunks)
-        if error_message is not None:
-            fields.append("error_message = ?")
-            values.append(error_message)
-        if num_pages is not None:
-            fields.append("num_pages = ?")
-            values.append(num_pages)
-        if duration_seconds is not None:
-            fields.append("duration_seconds = ?")
-            values.append(duration_seconds)
-        if used_ocr is not None:
-            fields.append("used_ocr = ?")
-            values.append(int(used_ocr))
-        values.append(document_id)
-
-        with self._lock, self._connect() as conn:
-            conn.execute(f"UPDATE documents SET {', '.join(fields)} WHERE document_id = ?", values)
-            conn.commit()
+        with self._session_factory.begin() as session:
+            document = self._get_row(session, document_id)
+            if document is None:
+                return
+            document.status = status
+            if num_chunks is not None:
+                document.num_chunks = num_chunks
+            if error_message is not None:
+                document.error_message = error_message
+            if num_pages is not None:
+                document.num_pages = num_pages
+            if duration_seconds is not None:
+                document.duration_seconds = duration_seconds
+            if used_ocr is not None:
+                document.used_ocr = used_ocr
 
     def get(self, document_id: str) -> DocumentRecord | None:
-        with self._connect() as conn:
-            row = conn.execute("SELECT * FROM documents WHERE document_id = ?", (document_id,)).fetchone()
-            return self._row_to_record(row) if row else None
+        with self._session_factory() as session:
+            document = self._get_row(session, document_id)
+            return self._to_record(document) if document else None
 
     def list_all(self) -> list[DocumentRecord]:
-        with self._connect() as conn:
-            rows = conn.execute("SELECT * FROM documents ORDER BY upload_timestamp DESC").fetchall()
-            return [self._row_to_record(row) for row in rows]
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(Document)
+                .where(Document.workspace_id == self._workspace_id)
+                .order_by(Document.created_at.desc())
+            )
+            return [self._to_record(row) for row in rows]
 
     def delete(self, document_id: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
-            conn.commit()
+        if not _is_uuid(document_id):
+            return
+        with self._session_factory.begin() as session:
+            session.execute(
+                delete(Document).where(Document.id == document_id, Document.workspace_id == self._workspace_id)
+            )
 
     def reset(self) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("DELETE FROM documents")
-            conn.commit()
+        with self._session_factory.begin() as session:
+            session.execute(delete(Document).where(Document.workspace_id == self._workspace_id))
+
+    def _get_row(self, session: Session, document_id: str) -> Document | None:
+        # Malformed IDs (e.g. from a URL path) would otherwise surface as a Postgres
+        # type error; treat them as "not found" like any other unknown ID.
+        if not _is_uuid(document_id):
+            return None
+        return session.scalar(
+            select(Document).where(Document.id == document_id, Document.workspace_id == self._workspace_id)
+        )
 
     @staticmethod
-    def _row_to_record(row: sqlite3.Row) -> DocumentRecord:
+    def _to_record(document: Document) -> DocumentRecord:
         return DocumentRecord(
-            document_id=row["document_id"],
-            filename=row["filename"],
-            file_type=row["file_type"],
-            status=row["status"],
-            upload_timestamp=row["upload_timestamp"],
-            num_chunks=row["num_chunks"],
-            error_message=row["error_message"],
-            num_pages=row["num_pages"],
-            duration_seconds=row["duration_seconds"],
-            used_ocr=bool(row["used_ocr"]),
+            document_id=document.id,
+            filename=document.filename,
+            file_type=document.file_type,
+            status=document.status,
+            upload_timestamp=document.created_at.isoformat(),
+            num_chunks=document.num_chunks,
+            error_message=document.error_message,
+            num_pages=document.num_pages,
+            duration_seconds=document.duration_seconds,
+            used_ocr=document.used_ocr,
         )
