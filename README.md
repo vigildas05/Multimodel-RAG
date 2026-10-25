@@ -72,6 +72,7 @@ imports from the app, so it reads (and could be reused) as an independent LLM se
 | 3. Prompt construction | Untrusted text in marked data blocks, neutralised delimiters, explicit hierarchy, per-request canary | Documents posing as instructions |
 | 4. Output guard | Blocks canary/system-prompt leaks; redacts PII; strips invalid citations and images | Prompt leaks, PII exposure, fabricated citations, image-beacon exfiltration |
 | Tenancy & auth | Workspace filter on every vector query, per-workspace BM25, cookie auth with CSRF | Cross-tenant data access, session theft/fixation |
+| App hardening | Redis sliding-window rate limits (per IP, per account, per user), strict CORS, CSP/HSTS/nosniff/frame-ancestors, body size limits, generic 500s with request IDs, no input echo in 422s | Brute force, credential stuffing, request floods, clickjacking, info leaks via errors |
 
 ### Threat model
 
@@ -86,7 +87,7 @@ imports from the app, so it reads (and could be reused) as an independent LLM se
 - An **anonymous visitor** abusing the demo or auth endpoints.
 
 **Out of scope for now**: a compromised host or database, a malicious LLM provider, and
-denial of service beyond the per-request limits (rate limiting is planned).
+volumetric DDoS (rate limits handle abuse from individual IPs and accounts, not floods).
 
 ### Measured results
 
@@ -113,7 +114,9 @@ No prompt-injection defence is complete, and this one isn't either.
   legitimately want to see from their own documents.
 - Hidden-text detection doesn't catch text hidden behind images or shapes.
 - Parser memory caps apply on Linux only.
-- Rate limiting, security headers and the admin dashboard are not built yet.
+- Rate limits fail open if Redis is unreachable (availability over strictness).
+- Frontend security headers (CSP for the React app) are set at deployment; the admin
+  dashboard isn't built yet.
 
 ## Tech stack
 

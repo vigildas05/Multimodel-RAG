@@ -64,7 +64,7 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-def _email_fingerprint(email: str) -> str:
+def email_fingerprint(email: str) -> str:
     """Lets security events correlate failed logins per account without storing the email."""
     return hashlib.sha256(normalize_email(email).encode()).hexdigest()[:16]
 
@@ -131,7 +131,7 @@ class AuthService:
                     "auth",
                     severity="low",
                     user_id=user.id if user else None,
-                    details={"reason": reason, "email_fp": _email_fingerprint(email), "ip": client.ip_address},
+                    details={"reason": reason, "email_fp": email_fingerprint(email), "ip": client.ip_address},
                 )
                 failed = True
             else:

@@ -4,10 +4,11 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth.cookies import CSRF_COOKIE, REFRESH_COOKIE, clear_session_cookies, set_csrf_cookie, set_session_cookies
 from app.auth.dependencies import get_auth_service, get_client_info, get_current_user
-from app.auth.service import AuthenticatedUser, AuthService, ClientInfo, IssuedSession
+from app.auth.service import AuthenticatedUser, AuthService, ClientInfo, IssuedSession, email_fingerprint
 from app.auth.tokens import new_opaque_token
 from app.config import Settings
 from app.core.exceptions import AuthenticationError
+from app.core.rate_limit import RateLimiter, get_rate_limiter, limit_by_ip
 from app.services.demo_service import DemoService
 from app.dependencies import get_app_settings, get_demo_service
 from app.schemas.auth import CredentialsRequest, CsrfResponse, SessionResponse, UserOut
@@ -55,7 +56,7 @@ async def get_csrf_token(
     return CsrfResponse(csrf_token=token)
 
 
-@router.post("/register", response_model=SessionResponse, status_code=201)
+@router.post("/register", response_model=SessionResponse, status_code=201, dependencies=[Depends(limit_by_ip("register_ip"))])
 async def register(
     body: CredentialsRequest,
     response: Response,
@@ -67,19 +68,25 @@ async def register(
     return _session_response(response, settings, issued)
 
 
-@router.post("/login", response_model=SessionResponse)
+@router.post("/login", response_model=SessionResponse, dependencies=[Depends(limit_by_ip("login_ip"))])
 async def login(
     body: CredentialsRequest,
+    request: Request,
     response: Response,
     settings: Settings = Depends(get_app_settings),
     auth_service: AuthService = Depends(get_auth_service),
     client: ClientInfo = Depends(get_client_info),
+    limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> SessionResponse:
+    # Per-account limit (keyed by a hash of the email, so no addresses are stored in Redis)
+    # slows password guessing that's spread across many IPs.
+    policy = request.app.state.rate_limit_policies["login_account"]
+    await run_in_threadpool(limiter.check, policy, email_fingerprint(body.email))
     issued = await run_in_threadpool(auth_service.login, body.email, body.password, client)
     return _session_response(response, settings, issued)
 
 
-@router.post("/demo", response_model=SessionResponse, status_code=201)
+@router.post("/demo", response_model=SessionResponse, status_code=201, dependencies=[Depends(limit_by_ip("demo_ip"))])
 async def start_demo(
     response: Response,
     settings: Settings = Depends(get_app_settings),
@@ -91,7 +98,7 @@ async def start_demo(
     return _session_response(response, settings, issued)
 
 
-@router.post("/refresh", response_model=SessionResponse)
+@router.post("/refresh", response_model=SessionResponse, dependencies=[Depends(limit_by_ip("refresh_ip"))])
 async def refresh(
     request: Request,
     response: Response,

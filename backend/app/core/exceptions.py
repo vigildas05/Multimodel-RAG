@@ -87,6 +87,15 @@ class ResponseBlockedError(AppError):
     error_type = "response_blocked"
 
 
+class RateLimitedError(AppError):
+    status_code = 429
+    error_type = "rate_limited"
+
+    def __init__(self, message: str, retry_after: int):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class QuotaExceededError(AppError):
     status_code = 429
     error_type = "quota_exceeded"

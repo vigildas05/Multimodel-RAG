@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     MAX_QUESTION_CHARS: int = 4000
     PII_REDACTION_ENABLED: bool = True
 
+    # --- Rate limiting (Redis at REDIS_URL; fails open if Redis is down) ---
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_GLOBAL_PER_IP_PER_MINUTE: int = 300
+    RATE_LIMIT_LOGIN_PER_IP_PER_MINUTE: int = 10
+    RATE_LIMIT_LOGIN_PER_ACCOUNT_PER_HOUR: int = 20
+    RATE_LIMIT_REGISTER_PER_IP_PER_HOUR: int = 10
+    RATE_LIMIT_DEMO_PER_IP_PER_MINUTE: int = 3
+    RATE_LIMIT_REFRESH_PER_IP_PER_MINUTE: int = 30
+    RATE_LIMIT_CHAT_PER_USER_PER_MINUTE: int = 10
+    RATE_LIMIT_SEARCH_PER_USER_PER_MINUTE: int = 30
+    RATE_LIMIT_UPLOAD_PER_USER_PER_MINUTE: int = 10
+
+    # --- Request limits ---
+    # Max body for JSON requests; uploads are capped by MAX_UPLOAD_SIZE_MB instead.
+    MAX_JSON_BODY_KB: int = 64
+
     # --- Background processing ---
     REDIS_URL: str = "redis://localhost:6379/0"
     # "queue": uploads are processed by the arq worker (`arq app.worker.WorkerSettings`).

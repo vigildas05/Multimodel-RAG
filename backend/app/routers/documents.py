@@ -16,6 +16,7 @@ from app.core.exceptions import (
     UploadRejectedError,
 )
 from app.core.file_validation import new_document_id, sanitize_filename
+from app.core.rate_limit import limit_by_user
 from app.db.audit import record_security_event
 from app.dependencies import get_app_settings, get_document_service, get_registry
 from app.ingestion.jobs import submit_document
@@ -53,7 +54,12 @@ def _to_schema(record: DocumentRecord) -> DocumentMetadata:
     )
 
 
-@router.post("/upload", response_model=DocumentUploadResponse, status_code=202)
+@router.post(
+    "/upload",
+    response_model=DocumentUploadResponse,
+    status_code=202,
+    dependencies=[Depends(limit_by_user("upload_user"))],
+)
 async def upload_document(
     request: Request,
     file: UploadFile,

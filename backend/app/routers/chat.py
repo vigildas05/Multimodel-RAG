@@ -8,6 +8,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
 from app.config import Settings
 from app.core.exceptions import InputBlockedError, ResponseBlockedError
+from app.core.rate_limit import limit_by_user
 from app.db.audit import record_security_event
 from app.dependencies import consume_query_quota, get_app_settings, get_llm_provider, get_registry, get_retrieval_service
 from app.routers.retrieval_scope import build_retrieval_settings
@@ -24,7 +25,12 @@ logger = logging.getLogger("app.routers.chat")
 router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user)])
 
 
-@router.post("/chat", response_model=ChatResponse, dependencies=[Depends(consume_query_quota)])
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    # Rate limit first: a throttled request must not consume (or touch) the daily quota.
+    dependencies=[Depends(limit_by_user("chat_user")), Depends(consume_query_quota)],
+)
 async def chat(
     request: ChatRequest,
     http_request: Request,
