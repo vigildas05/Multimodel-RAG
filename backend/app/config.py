@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 5
 
+    # --- LLM security gateway (backend/security) ---
+    SECURITY_ENABLED: bool = True
+    SECURITY_CLASSIFIER_ENABLED: bool = True
+    SECURITY_CLASSIFIER_MODEL: str = "protectai/deberta-v3-base-prompt-injection-v2"
+    SECURITY_CLASSIFIER_WEIGHT: float = 0.7
+    SECURITY_BLOCK_THRESHOLD: float = 0.8
+    SECURITY_FLAG_THRESHOLD: float = 0.5
+    SECURITY_QUARANTINE_THRESHOLD: float = 0.75
+    MAX_QUESTION_CHARS: int = 4000
+    PII_REDACTION_ENABLED: bool = True
+
     # --- Background processing ---
     REDIS_URL: str = "redis://localhost:6379/0"
     # "queue": uploads are processed by the arq worker (`arq app.worker.WorkerSettings`).

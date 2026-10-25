@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.settings import RetrievalSettingsSchema
 
@@ -6,7 +6,8 @@ from app.schemas.settings import RetrievalSettingsSchema
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    question: str
+    # Hard cap on size; the security gateway separately flags unusually long questions.
+    question: str = Field(min_length=1, max_length=8000)
     settings: RetrievalSettingsSchema = RetrievalSettingsSchema()
 
 

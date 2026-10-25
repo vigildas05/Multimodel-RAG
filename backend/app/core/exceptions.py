@@ -77,6 +77,11 @@ class EmailAlreadyRegisteredError(AppError):
     error_type = "email_taken"
 
 
+class InputBlockedError(AppError):
+    status_code = 400
+    error_type = "input_blocked"
+
+
 class QuotaExceededError(AppError):
     status_code = 429
     error_type = "quota_exceeded"

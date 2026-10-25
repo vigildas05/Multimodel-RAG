@@ -27,7 +27,11 @@ from app.services.quota_service import QuotaService
 from app.services.reranking_service import RerankingService
 from app.services.retrieval_service import RetrievalService
 from app.services.vector_store_service import VectorStoreService
+from app.services.query_log_service import QueryLogService
 from app.services.whisper_service import WhisperService
+from security.classifier import HuggingFaceClassifier, NullClassifier
+from security.config import GatewayConfig
+from security.gateway import SecurityGateway
 from app.storage.upload_store import UploadStore
 from app.storage.workspace_repository import WorkspaceRepository
 
@@ -64,6 +68,8 @@ class Services:
     retrieval_service: RetrievalService
     document_service: DocumentService
     demo_service: DemoService
+    security_gateway: SecurityGateway
+    query_log_service: QueryLogService
 
     def attach_to(self, state) -> None:
         """Expose the container and every service as attributes (e.g. FastAPI's app.state)."""
@@ -96,6 +102,7 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
     )
     llm_provider = get_llm_provider(settings)
     upload_store = UploadStore(Path(settings.UPLOAD_DIR))
+    security_gateway = build_security_gateway(settings, preload=role == "api")
 
     return Services(
         session_factory=session_factory,
@@ -131,4 +138,26 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
             settings=settings,
         ),
         demo_service=DemoService(session_factory, vector_store, auth_service, settings, upload_store),
+        security_gateway=security_gateway,
+        query_log_service=QueryLogService(session_factory),
     )
+
+
+def build_security_gateway(settings: Settings, preload: bool = False) -> SecurityGateway:
+    classifier = (
+        HuggingFaceClassifier(settings.SECURITY_CLASSIFIER_MODEL)
+        if settings.SECURITY_ENABLED and settings.SECURITY_CLASSIFIER_ENABLED
+        else NullClassifier()
+    )
+    if preload and isinstance(classifier, HuggingFaceClassifier):
+        classifier.warm_up()  # avoid a slow first question
+    config = GatewayConfig(
+        enabled=settings.SECURITY_ENABLED,
+        block_threshold=settings.SECURITY_BLOCK_THRESHOLD,
+        flag_threshold=settings.SECURITY_FLAG_THRESHOLD,
+        quarantine_threshold=settings.SECURITY_QUARANTINE_THRESHOLD,
+        classifier_weight=settings.SECURITY_CLASSIFIER_WEIGHT,
+        max_input_chars=settings.MAX_QUESTION_CHARS,
+        pii_redaction=settings.PII_REDACTION_ENABLED,
+    )
+    return SecurityGateway(config, classifier)
