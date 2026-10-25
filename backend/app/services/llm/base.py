@@ -23,6 +23,10 @@ class LLMGenerationResult:
 
 
 class LLMProvider(ABC):
+    # Recorded in query_logs; set by each implementation.
+    provider_name: str = "unknown"
+    model_name: str | None = None
+
     @abstractmethod
     async def generate(
         self,

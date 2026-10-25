@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     # --- Qdrant ---
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
+    # Managed cluster (Qdrant Cloud): set both; they take precedence over host/port.
+    QDRANT_URL: str = ""
+    QDRANT_API_KEY: str = ""
     # chunks_v2: every point carries a workspace_id payload (tenant-indexed).
     QDRANT_COLLECTION: str = "chunks_v2"
 
@@ -135,6 +138,15 @@ class Settings(BaseSettings):
     OLLAMA_TEXT_MODEL: str = "llama3.2:3b"
     OLLAMA_VISION_MODEL: str = "moondream"
     OLLAMA_REQUEST_TIMEOUT: float = 120.0
+
+    # --- OpenAI-compatible hosted LLM (LLM_PROVIDER=openai_compatible) ---
+    # Groq: https://api.groq.com/openai/v1 · Gemini: https://generativelanguage.googleapis.com/v1beta/openai
+    # NVIDIA NIM: https://integrate.api.nvidia.com/v1 · OpenAI: https://api.openai.com/v1
+    LLM_BASE_URL: str = ""
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = ""
+    LLM_VISION_MODEL: str = ""
+    LLM_TIMEOUT_SECONDS: float = 60.0
 
     # --- Whisper ---
     WHISPER_MODEL_SIZE: str = "small"

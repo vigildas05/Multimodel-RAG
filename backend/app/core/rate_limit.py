@@ -74,6 +74,12 @@ class RateLimiter:
             return RateLimitResult(allowed=True)
         return RateLimitResult(allowed=False, retry_after_seconds=max(1, math.ceil(int(retry_ms) / 1000)))
 
+    def ping(self) -> bool:
+        try:
+            return bool(self._client.ping())
+        except redis.RedisError:
+            return False
+
     def check(self, policy: RateLimitPolicy, subject: str) -> None:
         """Raise RateLimitedError (429 + Retry-After) if `subject` is over `policy`."""
         result = self.hit(policy, subject)

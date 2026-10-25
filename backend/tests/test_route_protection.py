@@ -14,7 +14,7 @@ from app.main import create_app
 from app.routers.auth import PUBLIC_ROUTES
 from helpers import fetch_csrf
 
-ALWAYS_PUBLIC = PUBLIC_ROUTES | {("GET", "/health")}
+ALWAYS_PUBLIC = PUBLIC_ROUTES | {("GET", "/health"), ("GET", "/health/ready")}
 
 
 def _dependency_calls(dependant):
@@ -34,8 +34,8 @@ PROTECTED = [(m, p, r) for m, p, r in _api_routes() if (m, p) not in ALWAYS_PUBL
 
 
 def test_public_allow_list_is_small():
-    # csrf, register, login, refresh, logout, demo, health. Growing this needs a real reason.
-    assert len(ALWAYS_PUBLIC) <= 7
+    # csrf, register, login, refresh, logout, demo, health, health/ready. Growing this needs a real reason.
+    assert len(ALWAYS_PUBLIC) <= 8
 
 
 @pytest.mark.parametrize("method,path,route", PROTECTED, ids=[f"{m} {p}" for m, p, _ in PROTECTED])

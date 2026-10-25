@@ -75,7 +75,7 @@ def global_rate_limit_middleware():
     """Coarse per-IP limit on every request, before any routing or body parsing."""
 
     async def middleware(request: Request, call_next):
-        if request.method == "OPTIONS" or request.url.path == "/health":
+        if request.method == "OPTIONS" or request.url.path.startswith("/health"):
             return await call_next(request)
         limiter = request.app.state.rate_limiter
         policy = request.app.state.rate_limit_policies["global_ip"]

@@ -8,7 +8,9 @@ venv/
 
 # Env / secrets
 .env
+.env.*
 !.env.example
+!.env.*.example
 
 # Backend data
 backend/data/uploads/*

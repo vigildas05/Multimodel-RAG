@@ -87,6 +87,8 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
         port=settings.QDRANT_PORT,
         collection_name=settings.QDRANT_COLLECTION,
         vector_dim=settings.EMBEDDING_DIM,
+        url=settings.QDRANT_URL or None,
+        api_key=settings.QDRANT_API_KEY or None,
     )
     bm25_service = BM25Service()
 

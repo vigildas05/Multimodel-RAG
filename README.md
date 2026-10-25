@@ -297,7 +297,7 @@ instead (fine for a quick try, but the API then loads OCR/Whisper itself).
 
 Run `alembic upgrade head` again after pulling changes that add migrations.
 
-### Or run backend + Qdrant via Docker Compose
+### Or run backend + services via Docker Compose
 
 ```bash
 docker compose up -d --build
@@ -306,6 +306,13 @@ docker compose up -d --build
 The backend container reaches your host's Ollama via `host.docker.internal:11434`
 (already configured in `docker-compose.yml`). Run the frontend separately with
 `npm run dev`.
+
+## Deployment
+
+Production runs the API and worker on one VM behind Caddy (automatic HTTPS), with Neon,
+Qdrant Cloud, a hosted OpenAI-compatible LLM and the frontend on Vercel. See
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the accounts needed, a pre-deploy checklist,
+and step-by-step setup. `deploy/compose.smoke.yml` runs the same production stack locally.
 
 ## Try it
 

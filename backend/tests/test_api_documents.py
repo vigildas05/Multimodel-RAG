@@ -42,6 +42,18 @@ def test_health_check(client):
     assert resp.json() == {"status": "ok"}
 
 
+def test_readiness_reports_each_dependency(client):
+    resp = client.get("/health/ready")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ready", "checks": {"database": "ok", "redis": "ok", "vector_store": "ok"}}
+
+
+def test_readiness_degrades_without_leaking_details(app, client, monkeypatch):
+    monkeypatch.setattr(app.state.vector_store, "health_check", lambda: False)
+    resp = client.get("/health/ready")
+    assert resp.status_code == 503 and resp.json()["checks"]["vector_store"] == "fail"
+
+
 def test_reject_invalid_file_type(user_client):
     client = user_client()
     resp = client.post("/documents/upload", files={"file": ("virus.exe", b"not a real file", "application/octet-stream")})

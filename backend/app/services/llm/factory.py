@@ -24,11 +24,16 @@ def get_llm_provider(settings: Settings) -> LLMProvider:
                 vision_model=settings.OLLAMA_VISION_MODEL,
                 timeout=settings.OLLAMA_REQUEST_TIMEOUT,
             )
-        elif provider_name == "groq":
-            from app.services.llm.groq_provider import GroqProvider
-            import os
+        elif provider_name == "openai_compatible":
+            from app.services.llm.openai_compatible_provider import OpenAICompatibleProvider
 
-            _instance = GroqProvider(api_key=os.environ.get("GROQ_API_KEY", ""))
+            _instance = OpenAICompatibleProvider(
+                base_url=settings.LLM_BASE_URL,
+                api_key=settings.LLM_API_KEY,
+                model=settings.LLM_MODEL,
+                vision_model=settings.LLM_VISION_MODEL,
+                timeout=settings.LLM_TIMEOUT_SECONDS,
+            )
         else:
             raise ConfigurationError(f"Unknown LLM_PROVIDER '{settings.LLM_PROVIDER}'.")
         return _instance

@@ -1,0 +1,114 @@
+# Production stack for one VM: Caddy (HTTPS) -> API, plus the worker and Redis.
+# Postgres (Neon) and Qdrant (Qdrant Cloud) are managed services, configured in .env.prod.
+#
+#   cd deploy
+#   docker compose --env-file .env.prod -f compose.prod.yml up -d --build
+#
+# See docs/DEPLOYMENT.md.
+
+name: sentinel-rag
+
+# Shared settings for every container built from the backend image.
+x-backend: &backend
+  image: ${BACKEND_IMAGE:-sentinel-rag-backend:latest}
+  build:
+    context: ../backend
+  env_file: ${ENV_FILE:-.env.prod}
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  volumes:
+    - uploads:/app/data                       # API writes uploads, worker reads them
+    - model_cache:/home/app/.cache            # Hugging Face models (embeddings, classifier, Whisper)
+    - paddle_models:/home/app/.paddleocr      # PaddleOCR models
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env.prod}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env.prod}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    depends_on:
+      api:
+        condition: service_started
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Queue + rate limits. noeviction: never silently drop queued jobs under memory pressure.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: apply database migrations before the API and worker start.
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  api:
+    <<: *backend
+    environment:
+      # The API port is never published; only Caddy (on this private network) can reach it,
+      # so trusting X-Forwarded-For from any peer here means trusting Caddy.
+      FORWARDED_ALLOW_IPS: "*"
+    expose:
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *backend
+    command: ["arq", "app.worker.WorkerSettings"]
+    healthcheck:
+      test: ["CMD", "arq", "app.worker.WorkerSettings", "--check"]
+      interval: 60s
+      timeout: 15s
+      start_period: 300s
+      retries: 3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  uploads:
+  model_cache:
+  paddle_models:
+  redis_data:
+  caddy_data:
+  caddy_config:

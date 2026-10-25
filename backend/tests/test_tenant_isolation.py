@@ -248,7 +248,8 @@ def test_only_the_vector_store_service_imports_qdrant():
 
 
 def test_every_vector_store_operation_requires_a_scope():
-    unscoped_allowed = {"reset_collection"}  # test/eval setup only, see its docstring
+    # reset_collection: test/eval setup only (see its docstring); health_check: no data access.
+    unscoped_allowed = {"reset_collection", "health_check"}
     for name, method in inspect.getmembers(VectorStoreService, inspect.isfunction):
         if name.startswith("_") or name in unscoped_allowed:
             continue

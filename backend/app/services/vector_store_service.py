@@ -41,12 +41,21 @@ class VectorStoreService:
         collection_name: str,
         vector_dim: int,
         client: QdrantClient | None = None,
+        url: str | None = None,
+        api_key: str | None = None,
     ):
-        """`client` lets tests inject e.g. QdrantClient(":memory:") instead of a server."""
+        """`url` + `api_key` connect to a managed cluster (e.g. Qdrant Cloud) and take
+        precedence over host/port. `client` lets tests inject QdrantClient(":memory:")."""
         self._collection_name = collection_name
         self._vector_dim = vector_dim
         try:
-            self._client = client or QdrantClient(host=host, port=port, timeout=10)
+            if client is None:
+                client = (
+                    QdrantClient(url=url, api_key=api_key or None, timeout=10)
+                    if url
+                    else QdrantClient(host=host, port=port, timeout=10)
+                )
+            self._client = client
             self._ensure_collection()
         except Exception as exc:  # noqa: BLE001
             raise VectorStoreUnavailableError(
@@ -57,11 +66,17 @@ class VectorStoreService:
     def _ensure_collection(self) -> None:
         existing = [c.name for c in self._client.get_collections().collections]
         if self._collection_name not in existing:
-            self._client.create_collection(
-                collection_name=self._collection_name,
-                vectors_config=VectorParams(size=self._vector_dim, distance=Distance.COSINE),
-            )
-            logger.info("Created Qdrant collection '%s'", self._collection_name)
+            try:
+                self._client.create_collection(
+                    collection_name=self._collection_name,
+                    vectors_config=VectorParams(size=self._vector_dim, distance=Distance.COSINE),
+                )
+                logger.info("Created Qdrant collection '%s'", self._collection_name)
+            except UnexpectedResponse as exc:
+                # The API and worker start together; if the other process created the
+                # collection first, that's fine.
+                if "already exists" not in str(exc):
+                    raise
         # Idempotent; also upgrades collections created before tenancy existed.
         # is_tenant=True tells Qdrant to co-locate each workspace's points on disk, so
         # filtered searches stay fast with many tenants in one collection.
@@ -72,6 +87,14 @@ class VectorStoreService:
         )
         self._client.create_payload_index(self._collection_name, "document_id", field_schema="keyword")
         self._client.create_payload_index(self._collection_name, "file_type", field_schema="keyword")
+
+    def health_check(self) -> bool:
+        """Reachability only (lists collection names); touches no tenant data."""
+        try:
+            self._client.get_collections()
+            return True
+        except Exception:  # noqa: BLE001
+            return False
 
     def reset_collection(self) -> None:
         """Destructive and UNSCOPED: drops every tenant's data. Only for test and eval setup

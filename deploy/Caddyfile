@@ -1,0 +1,26 @@
+# Reverse proxy with automatic HTTPS (Let's Encrypt) for the API.
+# API_DOMAIN and ACME_EMAIL come from deploy/.env.prod (see compose.prod.yml).
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# First line of defence; the API enforces its own, tighter per-route limits.
+	request_body {
+		max_size 30MB
+	}
+
+	header -Server
+
+	reverse_proxy api:8000 {
+		health_uri /health
+		health_interval 30s
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

@@ -10,9 +10,12 @@ logger = logging.getLogger("app.services.llm.ollama")
 
 
 class OllamaProvider(LLMProvider):
+    provider_name = "ollama"
+
     def __init__(self, base_url: str, text_model: str, vision_model: str, timeout: float = 120.0):
         self._base_url = base_url.rstrip("/")
         self._text_model = text_model
+        self.model_name = text_model
         self._vision_model = vision_model
         self._timeout = timeout
 

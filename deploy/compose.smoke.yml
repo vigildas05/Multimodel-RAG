@@ -1,0 +1,43 @@
+# Local verification of the production stack, without cloud accounts:
+# swaps Neon/Qdrant Cloud for local containers and the hosted LLM for the host's Ollama.
+# Everything else (Caddy + TLS, migrations, read-only non-root containers, worker) is unchanged.
+#
+#   cd deploy
+#   (.env.smoke must contain ENV_FILE=.env.smoke)
+#   docker compose --env-file .env.smoke -f compose.prod.yml -f compose.smoke.yml up -d --build
+#   curl -k https://localhost/health/ready
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: smoke-only-password
+      POSTGRES_DB: sentinel
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:latest
+
+  migrate:
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy

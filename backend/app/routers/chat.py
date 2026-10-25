@@ -90,8 +90,8 @@ async def chat(
         timings=timings,
         num_chunks=len(result.chunks),
         usage=generation.raw_usage,
-        llm_provider=settings.LLM_PROVIDER,
-        llm_model=settings.OLLAMA_TEXT_MODEL if settings.LLM_PROVIDER == "ollama" else None,
+        llm_provider=llm_provider.provider_name,
+        llm_model=llm_provider.model_name,
     )
     if output.blocked:
         raise ResponseBlockedError(

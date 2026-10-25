@@ -1,10 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.csrf import csrf_middleware
 from app.config import get_settings
@@ -116,7 +118,32 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict:
+        """Liveness: the process is up."""
         return {"status": "ok"}
+
+    @app.get("/health/ready")
+    async def ready(request: Request) -> JSONResponse:
+        """Readiness: dependencies reachable. Reports ok/fail per dependency, no details."""
+        state = request.app.state
+
+        def check_database() -> bool:
+            try:
+                with state.db_engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                return True
+            except SQLAlchemyError:
+                return False
+
+        checks = {
+            "database": await run_in_threadpool(check_database),
+            "redis": await run_in_threadpool(state.rate_limiter.ping),
+            "vector_store": await run_in_threadpool(state.vector_store.health_check),
+        }
+        healthy = all(checks.values())
+        return JSONResponse(
+            status_code=200 if healthy else 503,
+            content={"status": "ready" if healthy else "degraded", "checks": {k: "ok" if v else "fail" for k, v in checks.items()}},
+        )
 
     return app
 

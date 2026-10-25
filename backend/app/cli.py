@@ -102,7 +102,12 @@ def _cleanup_demo(settings, session_factory) -> int:
     from app.services.vector_store_service import VectorStoreService
 
     vector_store = VectorStoreService(
-        settings.QDRANT_HOST, settings.QDRANT_PORT, settings.QDRANT_COLLECTION, settings.EMBEDDING_DIM
+        settings.QDRANT_HOST,
+        settings.QDRANT_PORT,
+        settings.QDRANT_COLLECTION,
+        settings.EMBEDDING_DIM,
+        url=settings.QDRANT_URL or None,
+        api_key=settings.QDRANT_API_KEY or None,
     )
     auth = AuthService(session_factory, settings, resolve_jwt_secret(settings))
     upload_store = UploadStore(Path(settings.UPLOAD_DIR))
