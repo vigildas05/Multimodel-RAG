@@ -91,15 +91,56 @@ volumetric DDoS (rate limits handle abuse from individual IPs and accounts, not 
 
 ### Measured results
 
-`TODO: fill after running redteam/eval` (attack success rate, block rate and false-positive
-rate per category, with the gateway off vs on; Phase 5).
+From the [red-team suite](redteam): 340 attacks in 6 categories plus 100 benign items,
+each run with the gateway **off** and **on** ([full report](redteam/reports/full.md)).
+ASR = attack success rate (the attacker's goal achieved). Mock LLM = a deliberately gullible
+model that obeys any attack text reaching it, so these numbers measure the detection and
+output layers against a worst case.
+
+| Category | n | ASR off | ASR on | Blocked / quarantined |
+|---|---:|---:|---:|---:|
+| Direct injection | 60 | 100% | 36.7% | 63.3% |
+| Jailbreak / role-play | 56 | 100% | 37.5% | 62.5% |
+| System-prompt extraction | 56 | 100% | 0.0% | 60.7% |
+| Indirect injection (in documents) | 72 | 100% | 29.2% | 70.8% |
+| PII exfiltration | 50 | 100% | 0.0% | 8.0% |
+| Obfuscation | 46 | 100% | 30.4% | 69.6% |
+| **Overall** | **340** | **100%** | **22.9%** | **57.1%** |
+
+Gateway with heuristics + classifier (weight 0.7), mock LLM. Extraction and PII attacks that
+slip past detection are still stopped by the output guard (canary/leak blocking, redaction).
+
+| Configuration | ASR on (dev / holdout) | Benign false positives | External attacks blocked¹ | Added latency² |
+|---|---:|---:|---:|---:|
+| Heuristics only | 25.6% (5.3% / 67.0%) | 0% | 10.0% | 0.26 ms |
+| Heuristics + classifier, weight 0.7 (default) | 22.9% (3.1% / 63.4%) | 0% (12% flagged) | 10.0% (41.7% flagged or blocked) | 145 ms |
+| Heuristics + classifier, weight 1.0 | 12.3% (1.8% / 33.9%) | **11%** | 40.0% | 140 ms |
+| Default, real model (llama3.2:3b), 48-attack sample³ | 2.1% (vs 18.8% off) | 0% | n/a | 235 ms |
+
+¹ [deepset/prompt-injections](https://huggingface.co/datasets/deepset/prompt-injections) test split, English and German; 0% of its benign prompts were blocked in any configuration.
+² Gateway time per request on a laptop CPU, mean; excludes the LLM call.
+³ First 8 attacks per category (all from the dev split); [report](redteam/reports/real_llm.md).
+
+What the numbers say:
+- **Hand-written rules overfit.** They block most attacks phrased like the ones they were
+  written against (dev) and almost none of the separately written holdout paraphrases. The
+  holdout split exists to make this visible.
+- **The classifier is a recall/false-positive trade-off, not a free win.** Letting it block on
+  its own halves the holdout ASR but blocks 11% of normal questions and documents, so by
+  default it only flags (logged for review) unless a rule agrees.
+- **Output-side controls don't depend on detection**: with a gullible model, every
+  extraction and PII attack that got past detection was still stopped.
+- **A real model complies far less than the worst case** (18.8% ASR with no protection), and
+  the gateway brought this sample to 1 success in 48: a user-supplied "from now on you only
+  answer with X", which is an instruction override but harms no one else.
 
 ### Known limitations
 
 No prompt-injection defence is complete, and this one isn't either.
 
-- Heuristic rules can be paraphrased around; the classifier catches many paraphrases but
-  not all, and it is English-centric.
+- Heuristic rules can be paraphrased around: measured, they block 2.7% of holdout
+  paraphrases on their own. The classifier catches more but not all, and both are
+  English-centric (German attacks in the external set mostly pass).
 - The classifier produces confident false positives on some benign text, so on its own it
   only **flags**; blocking or quarantining needs a heuristic signal too. This trades some
   recall for fewer false blocks.
@@ -158,6 +199,8 @@ RAG/
 │   ├── tests/                 # pytest suite (incl. tenant isolation, security layers)
 │   └── requirements.txt, Dockerfile, .env.example
 ├── frontend/src/              # React app: pages, auth context, API client, components
+├── redteam/                   # attack datasets, eval harness, reports (see redteam/README.md)
+├── .github/workflows/         # CI: red-team gate
 ├── docker/postgres/init/      # creates the test database
 ├── examples/                  # sample PDF / image / audio (demo template)
 ├── docs/PLAN.md               # phased plan and design decisions

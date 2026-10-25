@@ -35,6 +35,19 @@ def _squash(text: str) -> str:
     return re.sub(r"[\s\-_.]+", "", text).lower()
 
 
+# A verbatim run of this many words shared with the system prompt counts as a leak. Long
+# enough that ordinary phrasing ("the documents don't contain enough information") doesn't
+# trip it; found necessary by the red-team suite's real-LLM run, where a model restated
+# its instructions without the canary or any fixed fingerprint.
+LEAK_SHINGLE_WORDS = 10
+_WORDS = re.compile(r"[a-z0-9']+")
+
+
+def _shingles(text: str, n: int) -> set[tuple[str, ...]]:
+    words = _WORDS.findall(text.lower())
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+
 def detect_leak(text: str, bundle: PromptBundle) -> list[str]:
     reasons = []
     if bundle.canary:
@@ -42,7 +55,10 @@ def detect_leak(text: str, bundle: PromptBundle) -> list[str]:
         if token.lower() in _squash(text) or _squash(bundle.canary) in _squash(text):
             reasons.append("canary")
     normalized = " ".join(text.lower().split())
-    if any(fp in normalized for fp in LEAK_FINGERPRINTS):
+    if any(fp in normalized for fp in LEAK_FINGERPRINTS) or (
+        bundle.canary  # only the protected prompt is confidential; the plain one has nothing to hide
+        and _shingles(text, LEAK_SHINGLE_WORDS) & _shingles(bundle.system_prompt, LEAK_SHINGLE_WORDS)
+    ):
         reasons.append("system_prompt_text")
     return reasons
 

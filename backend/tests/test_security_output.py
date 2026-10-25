@@ -77,6 +77,24 @@ def test_normal_answer_is_not_a_leak():
     assert detect_leak("Transformers rely on self-attention [1].", bundle) == []
 
 
+def test_any_verbatim_ten_word_run_of_the_system_prompt_is_a_leak():
+    bundle = build_prompt("q", SOURCES)
+    restated = "Sure! I am a research assistant that answers questions using the user's uploaded documents."
+    assert detect_leak(restated, bundle) == ["system_prompt_text"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "The documents don't contain enough information to answer that; they only cover attention [1].",
+        "Sources disagree: [1] says 2017 while [2] says 2018, so the evidence is incomplete.",
+        "I can't share my instructions, but the paper says the Transformer uses self-attention [1].",
+    ],
+)
+def test_ordinary_answers_that_echo_prompt_wording_are_not_leaks(answer):
+    assert detect_leak(answer, build_prompt("q", SOURCES)) == []
+
+
 # --- PII ----------------------------------------------------------------------------
 
 
