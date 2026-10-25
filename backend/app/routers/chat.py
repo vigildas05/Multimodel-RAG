@@ -10,7 +10,7 @@ from app.config import Settings
 from app.core.exceptions import InputBlockedError, ResponseBlockedError
 from app.core.rate_limit import limit_by_user
 from app.db.audit import record_security_event
-from app.dependencies import consume_query_quota, get_app_settings, get_llm_provider, get_registry, get_retrieval_service
+from app.dependencies import charge_query_credits, consume_query_quota, get_app_settings, get_llm_provider, get_registry, get_retrieval_service
 from app.routers.retrieval_scope import build_retrieval_settings
 from app.schemas.chat import ChatRequest, ChatResponse, RetrievalInfo, SecurityNotes, SourceCitation
 from app.services.llm.base import LLMProvider
@@ -28,8 +28,9 @@ router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user)])
 @router.post(
     "/chat",
     response_model=ChatResponse,
-    # Rate limit first: a throttled request must not consume (or touch) the daily quota.
-    dependencies=[Depends(limit_by_user("chat_user")), Depends(consume_query_quota)],
+    # Order matters: a throttled request must not consume the daily quota, and a request
+    # over quota must not be charged credits.
+    dependencies=[Depends(limit_by_user("chat_user")), Depends(consume_query_quota), Depends(charge_query_credits)],
 )
 async def chat(
     request: ChatRequest,

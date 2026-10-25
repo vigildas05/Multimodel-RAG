@@ -40,6 +40,10 @@ WORKSPACE_MEMBER_ROLES = ("owner", "member")
 DOCUMENT_FILE_TYPES = ("pdf", "image", "audio")
 DOCUMENT_STATUSES = ("queued", "processing", "ready", "failed")
 SECURITY_SEVERITIES = ("info", "low", "medium", "high", "critical")
+CREDIT_ENTRY_KINDS = ("grant", "purchase", "spend", "refund", "adjustment")
+# created: order made; verified: checkout signature checked (no credits yet);
+# captured: webhook confirmed payment and credits granted; failed: payment failed.
+PAYMENT_STATUSES = ("created", "verified", "captured", "failed")
 
 
 def _new_uuid() -> str:
@@ -175,6 +179,84 @@ class UsageQuota(Base):
     )
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     queries: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class CreditAccount(Base):
+    """One row per user, used only as a lock target: credit spends take
+    SELECT ... FOR UPDATE on it, so concurrent spends for one user run one at a time and
+    can never overspend. The balance itself is never stored; see CreditLedger."""
+
+    __tablename__ = "credit_accounts"
+
+    user_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+
+class CreditLedger(Base):
+    """Append-only credit history; a user's balance is SUM(amount). A database trigger
+    rejects UPDATEs (migration 0005). `idempotency_key` is unique, so a purchase or refund
+    can be recorded at most once no matter how many times a webhook or job retries."""
+
+    __tablename__ = "credit_ledger"
+    __table_args__ = (
+        CheckConstraint(_in_check("kind", CREDIT_ENTRY_KINDS), name="kind"),
+        CheckConstraint("amount <> 0", name="amount_nonzero"),
+        CheckConstraint("(kind IN ('spend') AND amount < 0) OR (kind <> 'spend' AND amount > 0) OR kind = 'adjustment'", name="amount_sign"),
+        Index("ix_credit_ledger_user_id_created_at", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    # e.g. signup_bonus, demo_bonus, query, image_processing, audio_processing, purchase
+    reason: Mapped[str] = mapped_column(String(48), nullable=False)
+    reference_type: Mapped[str | None] = mapped_column(String(32))
+    reference_id: Mapped[str | None] = mapped_column(String(64))
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Payment(Base):
+    """A Razorpay order and what happened to it. The amount is fixed server-side from the
+    pack when the order is created; credits are granted only from a verified webhook."""
+
+    __tablename__ = "payments"
+    __table_args__ = (CheckConstraint(_in_check("status", PAYMENT_STATUSES), name="status"),)
+
+    id: Mapped[str] = _uuid_pk()
+    user_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    razorpay_order_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    razorpay_payment_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    pack_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    credits: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR", server_default="INR")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="created", server_default="created")
+    test_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class WebhookEvent(Base):
+    """Every verified webhook delivery, keyed by the provider's event ID, so a retried or
+    duplicated delivery is recognised and acknowledged without being processed twice."""
+
+    __tablename__ = "webhook_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False)
+    received_at: Mapped[datetime] = _created_at()
 
 
 class SecurityEvent(Base):

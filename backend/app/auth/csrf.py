@@ -23,8 +23,9 @@ logger = logging.getLogger("app.auth.csrf")
 
 CSRF_HEADER = "X-CSRF-Token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
-# Requests that authenticate by other means (e.g. signed payment webhooks in Phase 3).
-CSRF_EXEMPT_PATHS: frozenset[str] = frozenset()
+# Requests that authenticate by other means: the Razorpay webhook is verified by an HMAC
+# signature over its body (and carries no cookies).
+CSRF_EXEMPT_PATHS: frozenset[str] = frozenset({"/webhooks/razorpay"})
 
 
 async def csrf_middleware(request: Request, call_next):

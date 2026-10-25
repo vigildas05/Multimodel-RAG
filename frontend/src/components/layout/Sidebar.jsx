@@ -1,15 +1,26 @@
-import { LogOut, RotateCcw, UserRound } from 'lucide-react'
-import { useState } from 'react'
+import { Coins, LogOut, RotateCcw, UserRound } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import * as api from '../../api/client'
 import DocumentListItem from '../documents/DocumentListItem'
 import UploadControl from '../documents/UploadControl'
 import ErrorBanner from '../common/ErrorBanner'
+import { useAppContext } from '../../context/AppContext'
 import { useAuth } from '../../context/useAuth'
 import { useDocuments } from '../../hooks/useDocuments'
 
 export default function Sidebar() {
   const { documents, uploading, error, upload, remove, reset } = useDocuments()
   const { user, logout } = useAuth()
+  const { state } = useAppContext()
   const [confirmingReset, setConfirmingReset] = useState(false)
+  const [credits, setCredits] = useState(null)
+
+  // Refresh the balance after uploads and after each answered question (both cost credits).
+  const answered = state.messages.filter((m) => m.role === 'assistant' && !m.loading).length
+  useEffect(() => {
+    api.getUsage().then((u) => setCredits(u.credit_balance)).catch(() => {})
+  }, [documents, answered])
 
   const handleReset = async () => {
     if (!confirmingReset) {
@@ -55,6 +66,17 @@ export default function Sidebar() {
           <RotateCcw size={13} />
           {confirmingReset ? 'Click again to confirm' : 'Delete all my documents'}
         </button>
+
+        <Link
+          to="/billing"
+          className="flex items-center justify-between rounded-lg bg-slate-800/40 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800"
+        >
+          <span className="flex items-center gap-1.5">
+            <Coins size={13} className="text-emerald-400" />
+            {credits === null ? '…' : credits} credits
+          </span>
+          <span className="text-slate-500">Billing</span>
+        </Link>
 
         <div className="flex items-center gap-2 rounded-lg px-1 py-1">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-400">

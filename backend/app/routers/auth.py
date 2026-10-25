@@ -24,6 +24,8 @@ PUBLIC_ROUTES = {
     ("POST", "/auth/refresh"),
     ("POST", "/auth/logout"),
     ("POST", "/auth/demo"),
+    # Authenticated by Razorpay's HMAC signature instead of a session (see routers/billing.py).
+    ("POST", "/webhooks/razorpay"),
 }
 
 

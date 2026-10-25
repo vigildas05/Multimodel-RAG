@@ -34,6 +34,7 @@ async def process_document(services, workspace_id: str, user_id: str, document_i
         return
     if not record.storage_path:
         await run_in_threadpool(registry.update_status, document_id, "failed", None, "The uploaded file is missing.")
+        await _refund(services, scope, document_id)
         return
 
     await run_in_threadpool(registry.update_status, document_id, "processing")
@@ -45,9 +46,11 @@ async def process_document(services, workspace_id: str, user_id: str, document_i
     except asyncio.CancelledError:
         # arq cancels the job when it exceeds INGEST_JOB_TIMEOUT_SECONDS.
         await run_in_threadpool(registry.update_status, document_id, "failed", None, "Processing timed out.")
+        await _refund(services, scope, document_id)
         raise
     except Exception:  # noqa: BLE001
-        pass  # ingest_file already recorded a user-safe failure on the document
+        # ingest_file already recorded a user-safe failure on the document.
+        await _refund(services, scope, document_id)
     finally:
         await run_in_threadpool(services.upload_store.delete, record.storage_path)
         await run_in_threadpool(registry.clear_storage_path, document_id)
@@ -55,6 +58,13 @@ async def process_document(services, workspace_id: str, user_id: str, document_i
     # Deleted while it was being processed? Then the chunks just written are orphans.
     if await run_in_threadpool(registry.get, document_id) is None:
         await run_in_threadpool(services.vector_store.delete_by_document_id, scope, document_id)
+
+
+async def _refund(services, scope: TenantScope, document_id: str) -> None:
+    """Give back the processing credits for a document that failed (idempotent)."""
+    await run_in_threadpool(
+        services.credit_service.refund_reference, scope.user_id, "document", document_id, "processing_failed"
+    )
 
 
 async def submit_document(services, settings: Settings, scope: TenantScope, document_id: str, force_ocr: bool) -> None:

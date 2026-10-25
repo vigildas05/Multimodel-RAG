@@ -142,6 +142,26 @@ export async function getCurrentUser() {
   return data
 }
 
+export async function getBilling() {
+  const { data } = await client.get('/billing')
+  return data
+}
+
+// The client sends only a pack ID; the server decides the amount.
+export async function createOrder(packId) {
+  const { data } = await client.post('/billing/orders', { pack_id: packId })
+  return data
+}
+
+export async function verifyCheckout(response) {
+  const { data } = await client.post('/billing/verify', {
+    razorpay_order_id: response.razorpay_order_id,
+    razorpay_payment_id: response.razorpay_payment_id,
+    razorpay_signature: response.razorpay_signature,
+  })
+  return data
+}
+
 export async function getUsage() {
   const { data } = await client.get('/usage/me')
   return data

@@ -7,3 +7,4 @@ class UsageResponse(BaseModel):
     is_demo: bool
     # ISO timestamp when a demo workspace (and its session) expires; null for real accounts.
     workspace_expires_at: str | None
+    credit_balance: int

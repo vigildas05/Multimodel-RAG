@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.service import AuthService
 from app.auth.tokens import resolve_jwt_secret
+from app.billing.credits import CreditService
+from app.billing.service import BillingService
 from app.config import Settings
 from app.services.bm25_service import BM25Service
 from app.services.chunking_service import RecursiveChunker
@@ -67,6 +69,8 @@ class Services:
     upload_store: UploadStore
     retrieval_service: RetrievalService
     document_service: DocumentService
+    credit_service: CreditService
+    billing_service: BillingService
     demo_service: DemoService
     security_gateway: SecurityGateway
     query_log_service: QueryLogService
@@ -142,6 +146,8 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
             security_gateway=security_gateway,
         ),
         demo_service=DemoService(session_factory, vector_store, auth_service, settings, upload_store),
+        credit_service=CreditService(session_factory),
+        billing_service=BillingService(session_factory, settings),
         security_gateway=security_gateway,
         query_log_service=QueryLogService(session_factory),
     )

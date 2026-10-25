@@ -36,6 +36,43 @@ scanned documents, Whisper for audio, and a swappable local/hosted LLM backend.
   redaction, citation checks, image stripping)
 - Every security decision is recorded as a security event
 
+## Credits and payments (Razorpay, TEST MODE only)
+
+Questions and media processing cost credits (1 per question, 3 per image, 5 per audio file,
+PDFs free; all configurable). New accounts get 20 free credits, demo visitors 30, and more can
+be bought in packs on the Billing page. **Payments run in Razorpay test mode only: no real
+money.** The server refuses to start with a live key or with test mode switched off.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant A as API
+    participant R as Razorpay
+    B->>A: POST /billing/orders {pack_id}
+    Note over A: amount looked up server-side<br/>from the pack (never from the client)
+    A->>R: create order (amount, INR)
+    R-->>A: order_id
+    A-->>B: order_id, amount, public key
+    B->>R: Razorpay Checkout (test card)
+    R-->>B: payment_id + signature
+    B->>A: POST /billing/verify
+    Note over A: HMAC(order_id|payment_id) checked<br/>status = verified, NO credits yet
+    R->>A: webhook payment.captured (X-Razorpay-Signature)
+    Note over A: verify HMAC over raw body<br/>record event ID once (unique)<br/>check amount + currency match the order<br/>ledger entry with key purchase:payment_id (unique)
+    A-->>R: 200
+    B->>A: GET /billing (poll)
+    A-->>B: balance includes the new credits
+```
+
+- **Append-only ledger.** Balances are always `SUM(credit_ledger.amount)`; a Postgres trigger
+  rejects UPDATEs, corrections are new entries.
+- **No overspend.** Each spend locks the user's account row, re-reads the balance and inserts
+  the debit in one transaction; a 30-thread test proves exactly the affordable number succeed.
+- **No double credit.** Webhook event IDs and `purchase:<payment_id>` ledger keys are unique, so
+  retried, duplicated or concurrent deliveries credit once (tested, including 8 concurrent).
+- **Automatic refunds.** Credits are taken when an action starts and returned if it fails
+  (a question that errors, a document that fails processing in the worker), idempotently.
+
 ## Security architecture
 
 ```mermaid
@@ -72,6 +109,7 @@ imports from the app, so it reads (and could be reused) as an independent LLM se
 | 3. Prompt construction | Untrusted text in marked data blocks, neutralised delimiters, explicit hierarchy, per-request canary | Documents posing as instructions |
 | 4. Output guard | Blocks canary/system-prompt leaks; redacts PII; strips invalid citations and images | Prompt leaks, PII exposure, fabricated citations, image-beacon exfiltration |
 | Tenancy & auth | Workspace filter on every vector query, per-workspace BM25, cookie auth with CSRF | Cross-tenant data access, session theft/fixation |
+| Payments | Server-side pricing, signed webhooks as the only credit source, amount/currency checks, unique event and purchase keys, append-only ledger with row-locked spends | Amount tampering, forged or replayed webhooks, double crediting, overspending races |
 | App hardening | Redis sliding-window rate limits (per IP, per account, per user), strict CORS, CSP/HSTS/nosniff/frame-ancestors, body size limits, generic 500s with request IDs, no input echo in 422s | Brute force, credential stuffing, request floods, clickjacking, info leaks via errors |
 
 ### Threat model
@@ -157,7 +195,8 @@ No prompt-injection defence is complete, and this one isn't either.
 - Parser memory caps apply on Linux only.
 - Rate limits fail open if Redis is unreachable (availability over strictness).
 - Frontend security headers (CSP for the React app) are set at deployment; the admin
-  dashboard isn't built yet.
+  dashboard UI isn't built yet (its payments API exists).
+- Payments are Razorpay test mode only by design; there is no live-payments path.
 
 ## Tech stack
 

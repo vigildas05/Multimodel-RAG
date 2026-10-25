@@ -45,8 +45,9 @@ via ONNX Runtime). That switch isn't implemented yet.
 - [ ] Backend tests pass, including the tenant-isolation suite: `cd backend && pytest`
 - [ ] Red-team gate passes: `python redteam/run_eval.py --classifier off --max-asr 0.28 --max-fpr 0.02`
 - [ ] `deploy/.env.prod` filled in, with a fresh `JWT_SECRET_KEY`; `git status` shows it untracked
-- [ ] Payments (Phase 3, not built yet): when added, confirm webhook signature verification is
-      on and Razorpay keys are **test** keys before going live
+- [ ] Payments: `RAZORPAY_KEY_ID` starts with `rzp_test_`, `PAYMENTS_TEST_MODE=true`, and the
+      webhook secret is set (the API refuses to start otherwise); `pytest tests/test_billing.py`
+      passes (webhook signature verification and idempotency)
 
 ## 1. Managed services
 
@@ -104,6 +105,22 @@ C="docker compose --env-file .env.prod -f compose.prod.yml"
 $C run --rm -v "$PWD/../examples:/examples:ro" api python -m app.cli seed-demo --samples-dir /examples
 $C run --rm api python -m app.cli create-admin --email you@example.com
 ```
+
+## 3b. Razorpay (test mode, optional)
+
+Leave the three `RAZORPAY_*` variables empty to run without payments (the billing page says so).
+To enable test payments:
+
+1. In the Razorpay dashboard, switch to **Test Mode** and generate API keys
+   (`rzp_test_...` key ID + secret). Live keys are refused at startup.
+2. **Settings → Webhooks → Add**: URL `https://api.<domain>/webhooks/razorpay`, a strong secret,
+   events `payment.captured`, `order.paid`, `payment.failed`.
+3. Put the key ID, key secret and webhook secret in `deploy/.env.prod`, then
+   `docker compose --env-file .env.prod -f compose.prod.yml up -d`.
+4. Buy a pack on the Billing page with test card `4111 1111 1111 1111`, any future expiry and
+   CVV. Credits appear when the webhook arrives (usually within seconds).
+
+Credits are granted only from the signed webhook, never from the browser's checkout callback.
 
 ## 4. Vercel (frontend)
 

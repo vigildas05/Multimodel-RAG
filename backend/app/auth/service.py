@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.passwords import hash_password, needs_rehash, validate_password_policy, verify_password
 from app.auth.tokens import create_access_token, decode_access_token, hash_token, new_opaque_token
+from app.billing.credits import add_entry
 from app.config import Settings
 from app.core.exceptions import AuthenticationError, EmailAlreadyRegisteredError
 from app.core.tenancy import TenantScope
@@ -111,6 +112,15 @@ class AuthService:
                     target_id=user.id,
                     ip_address=client.ip_address,
                 )
+                if self._settings.SIGNUP_BONUS_CREDITS > 0:
+                    add_entry(
+                        session,
+                        user.id,
+                        self._settings.SIGNUP_BONUS_CREDITS,
+                        "grant",
+                        "signup_bonus",
+                        idempotency_key=f"signup:{user.id}",
+                    )
                 return self.issue_session(session, user, workspace, client)
         except IntegrityError as exc:
             # Lost a race with a concurrent registration of the same email.

@@ -5,6 +5,7 @@ Usage (from backend/):
     python -m app.cli promote --email someone@example.com
     python -m app.cli seed-demo [--samples-dir ../examples] [--force]
     python -m app.cli cleanup-demo
+    python -m app.cli grant-credits --email someone@example.com --amount 100 --reason support
 """
 
 import argparse
@@ -97,6 +98,21 @@ async def _seed_demo(args, settings, session_factory) -> int:
     return 1 if failures else 0
 
 
+def _grant_credits(args, session_factory) -> int:
+    from app.billing.credits import add_entry, balance_in
+
+    with session_factory.begin() as session:
+        user = session.scalar(select(User).where(User.email == normalize_email(args.email)))
+        if user is None:
+            print(f"No account found for {args.email}.", file=sys.stderr)
+            return 1
+        add_entry(session, user.id, args.amount, "adjustment", f"admin_{args.reason}"[:48])
+        add_audit_log(session, "billing.credits_adjusted", target_type="user", target_id=user.id, details={"amount": args.amount, "via": "cli"})
+        balance = balance_in(session, user.id)
+    print(f"{args.email}: {args.amount:+d} credits, balance now {balance}.")
+    return 0
+
+
 def _cleanup_demo(settings, session_factory) -> int:
     from app.services.demo_service import DemoService
     from app.services.vector_store_service import VectorStoreService
@@ -127,6 +143,10 @@ def main(argv: list[str] | None = None) -> int:
     seed.add_argument("--samples-dir", default=str(DEFAULT_SAMPLES_DIR))
     seed.add_argument("--force", action="store_true", help="Delete and re-ingest the template's documents")
     sub.add_parser("cleanup-demo", help="Delete expired demo workspaces")
+    grant = sub.add_parser("grant-credits", help="Add (or with a negative amount, remove) credits")
+    grant.add_argument("--email", required=True)
+    grant.add_argument("--amount", type=int, required=True)
+    grant.add_argument("--reason", default="manual")
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -137,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
             return _admin(args, settings, session_factory)
         if args.command == "seed-demo":
             return asyncio.run(_seed_demo(args, settings, session_factory))
+        if args.command == "grant-credits":
+            return _grant_credits(args, session_factory)
         return _cleanup_demo(settings, session_factory)
     except AppError as exc:
         print(exc.message, file=sys.stderr)

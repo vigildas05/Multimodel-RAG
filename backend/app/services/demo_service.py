@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.service import AuthService, ClientInfo, IssuedSession
+from app.billing.credits import add_entry
 from app.config import Settings
 from app.core.exceptions import DemoUnavailableError, QuotaExceededError
 from app.core.tenancy import TenantScope
@@ -171,6 +172,15 @@ class DemoService:
                         hidden_span_count=doc.hidden_span_count,
                         quarantined_chunk_count=doc.quarantined_chunk_count,
                     )
+                )
+            if self._settings.DEMO_BONUS_CREDITS > 0:
+                add_entry(
+                    session,
+                    user.id,
+                    self._settings.DEMO_BONUS_CREDITS,
+                    "grant",
+                    "demo_bonus",
+                    idempotency_key=f"demo:{user.id}",
                 )
             add_audit_log(
                 session,

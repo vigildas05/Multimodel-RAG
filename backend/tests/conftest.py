@@ -25,6 +25,8 @@ os.environ["INGEST_MODE"] = "inline"
 os.environ["SECURITY_CLASSIFIER_ENABLED"] = "false"
 # Off by default so tests can make many requests; tests/test_app_security.py turns it on.
 os.environ["RATE_LIMIT_ENABLED"] = "false"
+# Plenty of credits so unrelated tests never run out; tests/test_credits.py sets its own.
+os.environ["SIGNUP_BONUS_CREDITS"] = "1000"
 os.environ["JWT_SECRET_KEY"] = "test-only-signing-key-0123456789abcdef-not-a-real-secret"
 
 from alembic import command  # noqa: E402

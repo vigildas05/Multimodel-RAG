@@ -140,5 +140,6 @@ def build_policies(settings) -> dict[str, RateLimitPolicy]:
             p("chat_user", settings.RATE_LIMIT_CHAT_PER_USER_PER_MINUTE, 60),
             p("search_user", settings.RATE_LIMIT_SEARCH_PER_USER_PER_MINUTE, 60),
             p("upload_user", settings.RATE_LIMIT_UPLOAD_PER_USER_PER_MINUTE, 60),
+            p("billing_user", settings.RATE_LIMIT_BILLING_PER_USER_PER_MINUTE, 60),
         ]
     )

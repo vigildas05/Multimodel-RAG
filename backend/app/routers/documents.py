@@ -91,20 +91,29 @@ async def upload_document(
 
     safe_name = sanitize_filename(file.filename)
     document_id = new_document_id()
-    storage_path = await run_in_threadpool(services.upload_store.save, user.workspace_id, file_bytes)
-
-    record = DocumentRecord(
-        document_id=document_id,
-        filename=safe_name,
-        file_type=file_type,
-        status="queued",
-        upload_timestamp=now_iso(),
-        storage_path=storage_path,
-        size_bytes=len(file_bytes),
-        sha256=hashlib.sha256(file_bytes).hexdigest(),
+    # Charged only after validation (rejected files cost nothing). If processing later
+    # fails, the worker refunds this charge (see ingestion/jobs.py).
+    cost = {"pdf": settings.CREDIT_COST_PDF, "image": settings.CREDIT_COST_IMAGE, "audio": settings.CREDIT_COST_AUDIO}[file_type]
+    charge = await run_in_threadpool(
+        services.credit_service.spend, user.user_id, cost, f"{file_type}_processing", "document", document_id
     )
-    await run_in_threadpool(registry.create, record)
-    await submit_document(services, settings, user.scope, document_id, force_ocr)
+    try:
+        storage_path = await run_in_threadpool(services.upload_store.save, user.workspace_id, file_bytes)
+        record = DocumentRecord(
+            document_id=document_id,
+            filename=safe_name,
+            file_type=file_type,
+            status="queued",
+            upload_timestamp=now_iso(),
+            storage_path=storage_path,
+            size_bytes=len(file_bytes),
+            sha256=hashlib.sha256(file_bytes).hexdigest(),
+        )
+        await run_in_threadpool(registry.create, record)
+        await submit_document(services, settings, user.scope, document_id, force_ocr)
+    except Exception:
+        await run_in_threadpool(services.credit_service.refund, charge, "upload_failed")
+        raise
 
     # "queued" in queue mode (the worker picks it up; clients poll GET /documents),
     # already "ready"/"failed" in inline mode.

@@ -8,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
+from app.billing.credits import CreditService
 from app.config import Settings, get_settings
 from app.services.bm25_service import BM25Service
 from app.services.demo_service import DemoService
@@ -87,4 +88,22 @@ async def consume_query_quota(
         yield ticket
     except Exception:
         await run_in_threadpool(quota.refund, user.user_id, ticket.day)
+        raise
+
+
+def get_credit_service(request: Request) -> CreditService:
+    return request.app.state.credit_service
+
+
+async def charge_query_credits(
+    user: AuthenticatedUser = Depends(get_current_user),
+    credits: CreditService = Depends(get_credit_service),
+    settings: Settings = Depends(get_app_settings),
+):
+    """Deduct the query cost up front (atomically); refund it if the request then fails."""
+    charge = await run_in_threadpool(credits.spend, user.user_id, settings.CREDIT_COST_QUERY, "query")
+    try:
+        yield charge
+    except Exception:
+        await run_in_threadpool(credits.refund, charge, "query_failed")
         raise

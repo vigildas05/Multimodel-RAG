@@ -96,6 +96,21 @@ class RateLimitedError(AppError):
         self.retry_after = retry_after
 
 
+class InsufficientCreditsError(AppError):
+    status_code = 402
+    error_type = "insufficient_credits"
+
+
+class PaymentError(AppError):
+    status_code = 400
+    error_type = "payment_error"
+
+
+class PaymentsUnavailableError(AppError):
+    status_code = 503
+    error_type = "payments_unavailable"
+
+
 class QuotaExceededError(AppError):
     status_code = 429
     error_type = "quota_exceeded"

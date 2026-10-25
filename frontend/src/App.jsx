@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { PublicOnly, RequireAuth } from './components/auth/RouteGuards'
 import { AuthProvider } from './context/AuthContext'
+import BillingPage from './pages/BillingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import WorkspacePage from './pages/WorkspacePage'
@@ -31,6 +32,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <WorkspacePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/billing"
+            element={
+              <RequireAuth>
+                <BillingPage />
               </RequireAuth>
             }
           />

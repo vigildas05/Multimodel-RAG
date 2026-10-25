@@ -29,6 +29,23 @@ class Settings(BaseSettings):
     # Queries (chat + search) per user per UTC day. Replaced by credits in Phase 3.
     DAILY_QUERY_LIMIT: int = 200
 
+    # --- Credits ---
+    # Cost per action, deducted atomically when the action starts and refunded if it fails.
+    CREDIT_COST_QUERY: int = 1
+    CREDIT_COST_PDF: int = 0
+    CREDIT_COST_IMAGE: int = 3
+    CREDIT_COST_AUDIO: int = 5
+    SIGNUP_BONUS_CREDITS: int = 20
+    DEMO_BONUS_CREDITS: int = 30
+
+    # --- Payments: Razorpay, TEST MODE ONLY ---
+    # Keys come from env only. The app refuses to start with a live key (rzp_live_...) or
+    # with PAYMENTS_TEST_MODE=false: this project never takes real money.
+    PAYMENTS_TEST_MODE: bool = True
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+
     # --- Demo ---
     # "Try the demo" gives each visitor a private, short-lived copy of the sample workspace.
     DEMO_ENABLED: bool = True
@@ -67,6 +84,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_CHAT_PER_USER_PER_MINUTE: int = 10
     RATE_LIMIT_SEARCH_PER_USER_PER_MINUTE: int = 30
     RATE_LIMIT_UPLOAD_PER_USER_PER_MINUTE: int = 10
+    RATE_LIMIT_BILLING_PER_USER_PER_MINUTE: int = 10
 
     # --- Request limits ---
     # Max body for JSON requests; uploads are capped by MAX_UPLOAD_SIZE_MB instead.

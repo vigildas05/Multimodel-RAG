@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 
 from app.auth.csrf import csrf_middleware
+from app.billing.razorpay import validate_payment_settings
 from app.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.exceptions import ConfigurationError, DatabaseUnavailableError
@@ -16,7 +17,7 @@ from app.core.logging_config import configure_logging
 from app.core.middleware import BodySizeLimitMiddleware, global_rate_limit_middleware, security_middleware
 from app.core.rate_limit import RateLimiter, build_policies
 from app.db.session import create_db_engine, create_session_factory
-from app.routers import admin, auth, chat, documents, search, usage
+from app.routers import admin, auth, billing, chat, documents, search, usage
 from app.services.container import build_services
 
 logger = logging.getLogger("app.main")
@@ -63,6 +64,7 @@ def validate_security_settings(settings) -> None:
             problems.append("COOKIE_SAMESITE=none is not allowed in production")
     if problems:
         raise ConfigurationError("Refusing to start: " + "; ".join(problems))
+    validate_payment_settings(settings)
 
 
 def install_http_security(app: FastAPI, settings) -> None:
@@ -115,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(search.router)
     app.include_router(usage.router)
+    app.include_router(billing.router)
 
     @app.get("/health")
     async def health() -> dict:
