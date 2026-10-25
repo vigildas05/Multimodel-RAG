@@ -154,3 +154,8 @@ class ConfigurationError(AppError):
 class DocumentNotFoundError(AppError):
     status_code = 404
     error_type = "document_not_found"
+
+
+class NotFoundError(AppError):
+    status_code = 404
+    error_type = "not_found"

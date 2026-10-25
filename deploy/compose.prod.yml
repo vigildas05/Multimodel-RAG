@@ -82,8 +82,15 @@ services:
       # The API port is never published; only Caddy (on this private network) can reach it,
       # so trusting X-Forwarded-For from any peer here means trusting Caddy.
       FORWARDED_ALLOW_IPS: "*"
+      REDTEAM_REPORTS_DIR: /app/redteam_reports
     expose:
       - "8000"
+    volumes:
+      - uploads:/app/data
+      - model_cache:/home/app/.cache
+      - paddle_models:/home/app/.paddleocr
+      # Committed red-team reports, for the admin dashboard.
+      - ../redteam/reports:/app/redteam_reports:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -151,6 +151,9 @@ $C restart worker
 - **Secrets.** Only in `deploy/.env.prod` (mode 600, never committed). Rotating `JWT_SECRET_KEY`
   signs everyone out.
 - **Demo cleanup** runs every 15 minutes in the worker.
+- **Admin dashboard** at `https://app.<domain>/admin` (admins only). The red-team tab reads
+  the reports committed in `redteam/reports/`, mounted read-only into the API container;
+  after re-running the eval, commit the new report and `git pull` on the VM.
 
 ## Hardening already in place
 

@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     DATA_DIR: str = "data"
     UPLOAD_DIR: str = "data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 25
+    # Red-team reports shown on the admin dashboard (read-only; mounted into the container
+    # in production, see deploy/compose.prod.yml).
+    REDTEAM_REPORTS_DIR: str = "../redteam/reports"
     ALLOWED_EXTENSIONS: str = ".pdf,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.ogg,.flac"
 
     # --- Upload limits ---

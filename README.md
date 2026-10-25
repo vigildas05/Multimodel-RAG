@@ -35,6 +35,9 @@ scanned documents, Whisper for audio, and a swappable local/hosted LLM backend.
   (quarantine), spotlighted prompts with a canary, output guard (leak blocking, PII
   redaction, citation checks, image stripping)
 - Every security decision is recorded as a security event
+- **Admin dashboard** (`/admin`): security events with filters (type, source, severity,
+  user, workspace, date range) and expandable details, usage (queries, blocks, credits,
+  latency mean/p95, tokens), payments overview, and the committed red-team reports
 
 ## Credits and payments (Razorpay, TEST MODE only)
 
@@ -194,8 +197,9 @@ No prompt-injection defence is complete, and this one isn't either.
 - Hidden-text detection doesn't catch text hidden behind images or shapes.
 - Parser memory caps apply on Linux only.
 - Rate limits fail open if Redis is unreachable (availability over strictness).
-- Frontend security headers (CSP for the React app) are set at deployment; the admin
-  dashboard UI isn't built yet (its payments API exists).
+- Frontend security headers (CSP for the React app) are set at deployment.
+- Dashboard usage figures come from the app's own `query_logs` and credit ledger; there is
+  no external metrics stack yet.
 - Payments are Razorpay test mode only by design; there is no live-payments path.
 
 ## Tech stack
@@ -386,6 +390,10 @@ request needs the `X-CSRF-Token` header (from `GET /auth/csrf`).
 | POST | `/chat` | Grounded answer + citations + retrieval and security metadata |
 | POST | `/search` | Retrieval only, no generation |
 | GET | `/admin/users` | Admin only |
+| GET | `/admin/security-events` | Admin only. Filters: `event_type`, `source`, `severity`, `user_id`, `workspace_id`, `since`, `until`; `limit`/`offset` |
+| GET | `/admin/security-summary`, `/admin/usage` | Admin only. Daily aggregates for the last `days` (1–90) |
+| GET | `/admin/payments` | Admin only. Payment counts by status and recent payments |
+| GET | `/admin/redteam/reports`, `/admin/redteam/latest?name=full` | Admin only. Red-team report summaries (from `REDTEAM_REPORTS_DIR`) |
 | GET | `/health` | Liveness check |
 
 Example `/chat` response:

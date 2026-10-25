@@ -25,3 +25,12 @@ export function PublicOnly({ children }) {
   if (status === 'authenticated') return <Navigate to="/" replace />
   return children
 }
+
+export function RequireAdmin({ children }) {
+  const { status, user } = useAuth()
+  const location = useLocation()
+  if (status === 'loading') return <FullScreenLoading />
+  if (status === 'anonymous') return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (user.role !== 'admin') return <Navigate to="/" replace />
+  return children
+}

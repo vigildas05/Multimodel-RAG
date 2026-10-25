@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { PublicOnly, RequireAuth } from './components/auth/RouteGuards'
+import { PublicOnly, RequireAdmin, RequireAuth } from './components/auth/RouteGuards'
 import { AuthProvider } from './context/AuthContext'
+import AdminPage from './pages/AdminPage'
 import BillingPage from './pages/BillingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -41,6 +42,14 @@ export default function App() {
               <RequireAuth>
                 <BillingPage />
               </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/:tab?"
+            element={
+              <RequireAdmin>
+                <AdminPage />
+              </RequireAdmin>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />

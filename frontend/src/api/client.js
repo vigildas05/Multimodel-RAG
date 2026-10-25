@@ -167,6 +167,38 @@ export async function getUsage() {
   return data
 }
 
+// --- admin (the API enforces the admin role on every one of these) -------------------
+
+export async function getSecurityEvents(params) {
+  const { data } = await client.get('/admin/security-events', { params })
+  return data
+}
+
+export async function getSecuritySummary(days) {
+  const { data } = await client.get('/admin/security-summary', { params: { days } })
+  return data
+}
+
+export async function getAdminUsage(days) {
+  const { data } = await client.get('/admin/usage', { params: { days } })
+  return data
+}
+
+export async function getAdminPayments() {
+  const { data } = await client.get('/admin/payments')
+  return data
+}
+
+export async function getRedteamReports() {
+  const { data } = await client.get('/admin/redteam/reports')
+  return data.reports
+}
+
+export async function getRedteamReport(name) {
+  const { data } = await client.get('/admin/redteam/latest', { params: { name } })
+  return data
+}
+
 // --- documents, chat, search --------------------------------------------------------
 
 export async function uploadDocument(file, { forceOcr = false, onProgress } = {}) {

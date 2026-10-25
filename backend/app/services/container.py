@@ -30,6 +30,7 @@ from app.services.reranking_service import RerankingService
 from app.services.retrieval_service import RetrievalService
 from app.services.vector_store_service import VectorStoreService
 from app.services.query_log_service import QueryLogService
+from app.services.admin_service import AdminService
 from app.services.whisper_service import WhisperService
 from security.classifier import HuggingFaceClassifier, NullClassifier
 from security.config import GatewayConfig
@@ -74,6 +75,7 @@ class Services:
     demo_service: DemoService
     security_gateway: SecurityGateway
     query_log_service: QueryLogService
+    admin_service: AdminService
 
     def attach_to(self, state) -> None:
         """Expose the container and every service as attributes (e.g. FastAPI's app.state)."""
@@ -150,6 +152,7 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
         billing_service=BillingService(session_factory, settings),
         security_gateway=security_gateway,
         query_log_service=QueryLogService(session_factory),
+        admin_service=AdminService(session_factory, settings.REDTEAM_REPORTS_DIR),
     )
 
 
