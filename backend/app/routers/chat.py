@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends
 
 from app.config import Settings
+from app.auth.dependencies import get_current_user
 from app.dependencies import get_app_settings, get_llm_provider, get_retrieval_service
 from app.schemas.chat import ChatRequest, ChatResponse, RetrievalInfo, SourceCitation
 from app.services.llm.base import LLMProvider
@@ -10,7 +11,7 @@ from app.services.prompt_builder import SYSTEM_PROMPT, build_user_prompt
 from app.services.retrieval_service import RetrievalService, RetrievalSettings
 
 logger = logging.getLogger("app.routers.chat")
-router = APIRouter(tags=["chat"])
+router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/chat", response_model=ChatResponse)

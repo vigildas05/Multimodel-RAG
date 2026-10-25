@@ -8,7 +8,22 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- Server ---
+    # "development" | "test" | "production". Production refuses to start with insecure settings.
+    APP_ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:5173"
+
+    # --- Auth ---
+    # HS256 signing key for access tokens, >= 32 bytes. Generate with:
+    #   python -c "import secrets; print(secrets.token_urlsafe(48))"
+    # Outside production an empty value means a random per-process key (sessions die on restart).
+    JWT_SECRET_KEY: str = ""
+    JWT_ISSUER: str = "sentinel-rag"
+    ACCESS_TOKEN_TTL_MINUTES: int = 15
+    REFRESH_TOKEN_TTL_DAYS: int = 7
+    PASSWORD_MIN_LENGTH: int = 12
+    # Browsers treat http://localhost as a secure context, so Secure cookies work in local dev too.
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "lax"
 
     # --- Database ---
     # SQLAlchemy URL; psycopg 3 driver. For Neon, append ?sslmode=require.

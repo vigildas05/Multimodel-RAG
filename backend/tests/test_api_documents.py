@@ -1,25 +1,14 @@
-"""End-to-end API tests via FastAPI's TestClient, against a live Qdrant instance.
-Skipped automatically if Qdrant isn't reachable. Ollama is not required for these
+"""End-to-end API tests via FastAPI's TestClient, against live Postgres and Qdrant.
+Skipped automatically if either isn't reachable. Ollama is not required for these
 tests since only non-generation endpoints are exercised."""
 
 import io
+import uuid
 
 import fitz
 import pytest
-from fastapi.testclient import TestClient
 
-from app.services.vector_store_service import VectorStoreService
-
-
-def _qdrant_available() -> bool:
-    try:
-        VectorStoreService("localhost", 6333, "test_api_documents_probe", 384)
-        return True
-    except Exception:
-        return False
-
-
-pytestmark = pytest.mark.skipif(not _qdrant_available(), reason="Qdrant is not running on localhost:6333")
+from helpers import signup
 
 
 def _make_test_pdf_bytes() -> bytes:
@@ -29,13 +18,22 @@ def _make_test_pdf_bytes() -> bytes:
     return doc.tobytes()
 
 
-@pytest.fixture(scope="module")
-def client(db_engine):  # db_engine: migrated Postgres test database
-    from app.main import create_app
+@pytest.fixture
+def user_client(client_factory):
+    def _make():
+        c = client_factory()
+        signup(c)
+        return c
 
-    with TestClient(create_app()) as c:
-        yield c
-        c.post("/documents/reset")
+    return _make
+
+
+def _upload_pdf(client) -> dict:
+    resp = client.post(
+        "/documents/upload", files={"file": ("bio.pdf", io.BytesIO(_make_test_pdf_bytes()), "application/pdf")}
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["document"]
 
 
 def test_health_check(client):
@@ -44,18 +42,17 @@ def test_health_check(client):
     assert resp.json() == {"status": "ok"}
 
 
-def test_reject_invalid_file_type(client):
+def test_reject_invalid_file_type(user_client):
+    client = user_client()
     resp = client.post("/documents/upload", files={"file": ("virus.exe", b"not a real file", "application/octet-stream")})
     assert resp.status_code == 400
     body = resp.json()
     assert body["error_type"] == "invalid_file_type"
 
 
-def test_upload_list_search_delete_pdf(client):
-    pdf_bytes = _make_test_pdf_bytes()
-    upload_resp = client.post("/documents/upload", files={"file": ("bio.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
-    assert upload_resp.status_code == 200
-    document = upload_resp.json()["document"]
+def test_upload_list_search_delete_pdf(user_client):
+    client = user_client()
+    document = _upload_pdf(client)
     assert document["status"] == "ready"
     assert document["num_chunks"] >= 1
     document_id = document["document_id"]
@@ -78,13 +75,30 @@ def test_upload_list_search_delete_pdf(client):
     assert not any(d["document_id"] == document_id for d in list_after.json()["documents"])
 
 
-def test_delete_nonexistent_document_returns_404(client):
-    resp = client.delete("/documents/does-not-exist")
+def test_other_users_documents_are_invisible(user_client):
+    """Document metadata is workspace-scoped. (Qdrant/BM25 search scoping is step 1.3.)"""
+    owner, intruder = user_client(), user_client()
+    document_id = _upload_pdf(owner)["document_id"]
+
+    assert intruder.get("/documents").json()["documents"] == []
+    assert intruder.get(f"/documents/{document_id}/chunks").status_code == 404
+    assert intruder.delete(f"/documents/{document_id}").status_code == 404
+    assert intruder.post("/documents/reset").json()["documents_removed"] == 0
+
+    # The owner's document survived all of that.
+    assert owner.get(f"/documents/{document_id}/chunks").status_code == 200
+    owner.delete(f"/documents/{document_id}")
+
+
+@pytest.mark.parametrize("bad_id", ["does-not-exist", str(uuid.uuid4())])
+def test_delete_nonexistent_document_returns_404(user_client, bad_id):
+    resp = user_client().delete(f"/documents/{bad_id}")
     assert resp.status_code == 404
     assert resp.json()["error_type"] == "document_not_found"
 
 
-def test_search_with_no_documents_returns_404(client):
+def test_search_with_no_documents_returns_404(user_client):
+    client = user_client()
     client.post("/documents/reset")
     resp = client.post("/search", json={"query": "anything at all"})
     assert resp.status_code == 404

@@ -3,6 +3,8 @@ import logging
 from fastapi import APIRouter, Depends, UploadFile
 from fastapi.param_functions import Query
 
+from app.auth.dependencies import get_current_user
+from app.auth.service import AuthenticatedUser
 from app.config import Settings
 from app.core.exceptions import DocumentNotFoundError
 from app.core.file_validation import (
@@ -27,7 +29,7 @@ from app.services.document_service import DocumentService, now_iso
 from app.storage.document_registry import DocumentRegistry
 
 logger = logging.getLogger("app.routers.documents")
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["documents"], dependencies=[Depends(get_current_user)])
 
 
 def _to_schema(record: DocumentRecord) -> DocumentMetadata:
@@ -49,6 +51,7 @@ def _to_schema(record: DocumentRecord) -> DocumentMetadata:
 async def upload_document(
     file: UploadFile,
     force_ocr: bool = Query(default=False),
+    user: AuthenticatedUser = Depends(get_current_user),
     settings: Settings = Depends(get_app_settings),
     registry: DocumentRegistry = Depends(get_registry),
     document_service: DocumentService = Depends(get_document_service),
@@ -72,13 +75,13 @@ async def upload_document(
 
     try:
         if file_type == "pdf":
-            updated = await document_service.ingest_pdf(document_id, safe_name, file_bytes, force_ocr=force_ocr)
+            updated = await document_service.ingest_pdf(user.scope, document_id, safe_name, file_bytes, force_ocr=force_ocr)
         elif file_type == "image":
-            updated = await document_service.ingest_image(document_id, safe_name, file_bytes)
+            updated = await document_service.ingest_image(user.scope, document_id, safe_name, file_bytes)
         elif file_type == "audio":
             stored_path = build_stored_path(settings.upload_dir_path, document_id, safe_name)
             stored_path.write_bytes(file_bytes)
-            updated = await document_service.ingest_audio(document_id, safe_name, str(stored_path))
+            updated = await document_service.ingest_audio(user.scope, document_id, safe_name, str(stored_path))
         else:
             raise ValueError(f"Unhandled file type: {file_type}")
     except Exception as exc:  # noqa: BLE001
@@ -97,13 +100,14 @@ async def list_documents(registry: DocumentRegistry = Depends(get_registry)) -> 
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
     registry: DocumentRegistry = Depends(get_registry),
     document_service: DocumentService = Depends(get_document_service),
 ) -> dict:
     record = registry.get(document_id)
     if record is None:
         raise DocumentNotFoundError(f"Document '{document_id}' was not found.")
-    await document_service.delete_document(document_id)
+    await document_service.delete_document(user.scope, document_id)
     return {"message": f"Document '{record.filename}' deleted.", "document_id": document_id}
 
 
@@ -134,9 +138,8 @@ async def get_document_chunks(
 
 @router.post("/reset", response_model=ResetResponse)
 async def reset_documents(
-    registry: DocumentRegistry = Depends(get_registry),
+    user: AuthenticatedUser = Depends(get_current_user),
     document_service: DocumentService = Depends(get_document_service),
 ) -> ResetResponse:
-    count = len(registry.list_all())
-    await document_service.reset_all()
-    return ResetResponse(message="All documents and vector data have been reset.", documents_removed=count)
+    count = await document_service.reset_workspace(user.scope)
+    return ResetResponse(message="All documents in your workspace have been deleted.", documents_removed=count)

@@ -14,11 +14,15 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel_test"
 )
 # Must be set before app settings are first read (get_settings is lru_cached), so that
-# app-level tests (e.g. create_app()) never touch the development database.
+# app-level tests (e.g. create_app()) never touch the development database or collection.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["QDRANT_COLLECTION"] = "test_document_chunks"
+os.environ["APP_ENV"] = "test"
+os.environ["JWT_SECRET_KEY"] = "test-only-signing-key-0123456789abcdef-not-a-real-secret"
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
 
@@ -59,6 +63,40 @@ def session_factory(db_engine):
     tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
     with db_engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+@pytest.fixture(scope="session")
+def app(db_engine):
+    """The full application, started once per session (startup loads every ML model)."""
+    from qdrant_client import QdrantClient
+
+    try:
+        QdrantClient(host="localhost", port=6333, timeout=5).delete_collection(os.environ["QDRANT_COLLECTION"])
+    except Exception:  # noqa: BLE001
+        pytest.skip("Qdrant is not running on localhost:6333 (docker compose up -d qdrant)")
+
+    from app.main import create_app
+
+    application = create_app()
+    with TestClient(application):  # runs the lifespan once
+        yield application
+
+
+@pytest.fixture
+def client_factory(app, session_factory):
+    """Fresh clients (separate cookie jars) against the shared app. Depending on
+    session_factory wipes the database after each test. HTTPS base URL: the session
+    cookies are Secure, so the client would not send them over plain http."""
+
+    def _new() -> TestClient:
+        return TestClient(app, base_url="https://testserver")
+
+    return _new
+
+
+@pytest.fixture
+def client(client_factory) -> TestClient:
+    return client_factory()
 
 
 @pytest.fixture

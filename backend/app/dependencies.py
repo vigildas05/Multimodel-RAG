@@ -3,8 +3,10 @@
 fetch them from the current request, so nothing is ever re-instantiated per request.
 """
 
-from fastapi import Request
+from fastapi import Depends, Request
 
+from app.auth.dependencies import get_current_user
+from app.auth.service import AuthenticatedUser
 from app.config import Settings, get_settings
 from app.services.bm25_service import BM25Service
 from app.services.document_service import DocumentService
@@ -22,8 +24,9 @@ def get_app_settings() -> Settings:
     return get_settings()
 
 
-def get_registry(request: Request) -> DocumentRegistry:
-    return request.app.state.registry
+def get_registry(request: Request, user: AuthenticatedUser = Depends(get_current_user)) -> DocumentRegistry:
+    """Cheap per-request object: scopes every document lookup to the caller's workspace."""
+    return DocumentRegistry(request.app.state.session_factory, user.workspace_id)
 
 
 def get_embedding_service(request: Request) -> EmbeddingService:

@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 
 from starlette.concurrency import run_in_threadpool
 
+from sqlalchemy.orm import Session, sessionmaker
+
 from app.core.exceptions import EmptyDocumentError
+from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 from app.models.document import DocumentRecord
 from app.services import pdf_service
@@ -31,7 +34,7 @@ def now_iso() -> str:
 class DocumentService:
     def __init__(
         self,
-        registry: DocumentRegistry,
+        session_factory: sessionmaker[Session],
         embedding_service: EmbeddingService,
         vector_store: VectorStoreService,
         bm25_service: BM25Service,
@@ -42,7 +45,7 @@ class DocumentService:
         chunk_size: int,
         chunk_overlap: int,
     ):
-        self._registry = registry
+        self._session_factory = session_factory
         self._embedding_service = embedding_service
         self._vector_store = vector_store
         self._bm25_service = bm25_service
@@ -53,6 +56,9 @@ class DocumentService:
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
 
+    def _registry(self, scope: TenantScope) -> DocumentRegistry:
+        return DocumentRegistry(self._session_factory, scope.workspace_id)
+
     def rebuild_bm25_from_store(self) -> None:
         self._bm25_service.rebuild(self._vector_store.get_all_chunks())
 
@@ -61,6 +67,7 @@ class DocumentService:
 
     async def ingest_pdf(
         self,
+        scope: TenantScope,
         document_id: str,
         filename: str,
         file_bytes: bytes,
@@ -112,10 +119,11 @@ class DocumentService:
             )
 
         await self._embed_and_store(chunks)
-        return await self._finalize(document_id, filename, "pdf", chunks, num_pages=len(pages), used_ocr=any_ocr)
+        return await self._finalize(scope, document_id, filename, "pdf", chunks, num_pages=len(pages), used_ocr=any_ocr)
 
     async def ingest_image(
         self,
+        scope: TenantScope,
         document_id: str,
         filename: str,
         file_bytes: bytes,
@@ -154,10 +162,11 @@ class DocumentService:
         ]
 
         await self._embed_and_store(chunks)
-        return await self._finalize(document_id, filename, "image", chunks, used_ocr=bool(ocr_text.strip()))
+        return await self._finalize(scope, document_id, filename, "image", chunks, used_ocr=bool(ocr_text.strip()))
 
     async def ingest_audio(
         self,
+        scope: TenantScope,
         document_id: str,
         filename: str,
         file_path: str,
@@ -188,7 +197,7 @@ class DocumentService:
 
         await self._embed_and_store(chunks)
         duration = transcription.segments[-1].end if transcription.segments else None
-        return await self._finalize(document_id, filename, "audio", chunks, duration_seconds=duration)
+        return await self._finalize(scope, document_id, filename, "audio", chunks, duration_seconds=duration)
 
     @staticmethod
     def _pack_segments(segments, chunk_size: int, chunk_overlap: int) -> list[tuple[str, float, float]]:
@@ -224,6 +233,7 @@ class DocumentService:
 
     async def _finalize(
         self,
+        scope: TenantScope,
         document_id: str,
         filename: str,
         file_type: str,
@@ -232,8 +242,9 @@ class DocumentService:
         duration_seconds: float | None = None,
         used_ocr: bool = False,
     ) -> DocumentRecord:
+        registry = self._registry(scope)
         await run_in_threadpool(
-            self._registry.update_status,
+            registry.update_status,
             document_id,
             "ready",
             len(chunks),
@@ -242,15 +253,20 @@ class DocumentService:
             duration_seconds,
             used_ocr,
         )
-        record = await run_in_threadpool(self._registry.get, document_id)
+        record = await run_in_threadpool(registry.get, document_id)
         return record
 
-    async def delete_document(self, document_id: str) -> None:
+    async def delete_document(self, scope: TenantScope, document_id: str) -> None:
         await run_in_threadpool(self._vector_store.delete_by_document_id, document_id)
-        await run_in_threadpool(self._registry.delete, document_id)
+        await run_in_threadpool(self._registry(scope).delete, document_id)
         await run_in_threadpool(self.rebuild_bm25_from_store)
 
-    async def reset_all(self) -> None:
-        await run_in_threadpool(self._vector_store.reset_collection)
-        await run_in_threadpool(self._registry.reset)
-        await run_in_threadpool(self._bm25_service.rebuild, [])
+    async def reset_workspace(self, scope: TenantScope) -> int:
+        """Delete every document in the caller's workspace (and only that workspace)."""
+        registry = self._registry(scope)
+        records = await run_in_threadpool(registry.list_all)
+        for record in records:
+            await run_in_threadpool(self._vector_store.delete_by_document_id, record.document_id)
+        await run_in_threadpool(registry.reset)
+        await run_in_threadpool(self.rebuild_bm25_from_store)
+        return len(records)

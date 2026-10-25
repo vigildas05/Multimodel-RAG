@@ -6,7 +6,6 @@ from alembic.migration import MigrationContext
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Base
-from app.db.bootstrap import LOCAL_SYSTEM_EMAIL, ensure_local_workspace
 from app.db.models import Document, User
 
 
@@ -49,13 +48,3 @@ def test_document_requires_existing_workspace(session_factory):
                 )
             )
 
-
-def test_local_workspace_bootstrap_is_idempotent(session_factory):
-    first = ensure_local_workspace(session_factory)
-    second = ensure_local_workspace(session_factory)
-    assert first == second
-
-    with session_factory() as session:
-        users = session.query(User).filter(User.email == LOCAL_SYSTEM_EMAIL).all()
-    assert len(users) == 1
-    assert users[0].is_active is False

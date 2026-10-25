@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends
 
+from app.auth.dependencies import get_current_user
 from app.dependencies import get_retrieval_service
 from app.schemas.search import RetrievedChunk, SearchRequest, SearchResponse
 from app.services.retrieval_service import RetrievalService, RetrievalSettings
 
-router = APIRouter(tags=["search"])
+router = APIRouter(tags=["search"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/search", response_model=SearchResponse)

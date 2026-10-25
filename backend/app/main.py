@@ -3,16 +3,19 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.auth.csrf import csrf_middleware
+from app.auth.service import AuthService
+from app.auth.tokens import resolve_jwt_secret
 from app.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.exceptions import DatabaseUnavailableError
 from app.core.logging_config import configure_logging
-from app.db.bootstrap import ensure_local_workspace
 from app.db.session import create_db_engine, create_session_factory
 from app.dependencies import get_app_settings
-from app.routers import audio, chat, documents, images, search
+from app.routers import admin, auth, chat, documents, search
 from app.services.bm25_service import BM25Service
 from app.services.chunking_service import RecursiveChunker
 from app.services.document_service import DocumentService
@@ -23,7 +26,6 @@ from app.services.reranking_service import RerankingService
 from app.services.retrieval_service import RetrievalService
 from app.services.vector_store_service import VectorStoreService
 from app.services.whisper_service import WhisperService
-from app.storage.document_registry import DocumentRegistry
 
 logger = logging.getLogger("app.main")
 
@@ -37,14 +39,14 @@ async def lifespan(app: FastAPI):
     app.state.db_engine = create_db_engine(settings)
     app.state.session_factory = create_session_factory(app.state.db_engine)
     try:
-        # TEMPORARY until step 1.3: everything runs in one local workspace (see db/bootstrap.py).
-        local_workspace_id = ensure_local_workspace(app.state.session_factory)
+        with app.state.db_engine.connect() as conn:
+            conn.execute(text("SELECT version_num FROM alembic_version"))
     except SQLAlchemyError as exc:
         raise DatabaseUnavailableError(
             "Could not initialize the database. Is Postgres running and migrated?",
             detail="Run `docker compose up -d postgres` and `alembic upgrade head` from backend/.",
         ) from exc
-    app.state.registry = DocumentRegistry(app.state.session_factory, local_workspace_id)
+    app.state.auth_service = AuthService(app.state.session_factory, settings, resolve_jwt_secret(settings))
     app.state.embedding_service = EmbeddingService.get_instance(
         settings.EMBEDDING_MODEL_NAME, settings.EMBEDDING_DEVICE
     )
@@ -72,7 +74,7 @@ async def lifespan(app: FastAPI):
         rrf_k=settings.RRF_K,
     )
     app.state.document_service = DocumentService(
-        registry=app.state.registry,
+        session_factory=app.state.session_factory,
         embedding_service=app.state.embedding_service,
         vector_store=app.state.vector_store,
         bm25_service=app.state.bm25_service,
@@ -98,6 +100,9 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="Multimodal RAG Research Assistant", version="0.1.0", lifespan=lifespan)
 
+    # Registered before CORS so CORS is the outer layer and CSRF rejections still carry
+    # CORS headers (otherwise the browser reports an opaque network error instead).
+    app.middleware("http")(csrf_middleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -108,11 +113,11 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
 
+    app.include_router(auth.router)
+    app.include_router(admin.router)
     app.include_router(documents.router)
     app.include_router(chat.router)
     app.include_router(search.router)
-    app.include_router(audio.router)
-    app.include_router(images.router)
 
     @app.get("/health")
     async def health() -> dict:

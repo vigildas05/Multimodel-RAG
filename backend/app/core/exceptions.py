@@ -45,6 +45,31 @@ class VectorStoreUnavailableError(AppError):
     error_type = "vector_store_unavailable"
 
 
+class AuthenticationError(AppError):
+    status_code = 401
+    error_type = "not_authenticated"
+
+
+class PermissionDeniedError(AppError):
+    status_code = 403
+    error_type = "forbidden"
+
+
+class CSRFError(AppError):
+    status_code = 403
+    error_type = "csrf_failed"
+
+
+class ValidationFailedError(AppError):
+    status_code = 422
+    error_type = "validation_failed"
+
+
+class EmailAlreadyRegisteredError(AppError):
+    status_code = 409
+    error_type = "email_taken"
+
+
 class DatabaseUnavailableError(AppError):
     status_code = 503
     error_type = "database_unavailable"
