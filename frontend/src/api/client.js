@@ -2,16 +2,141 @@ import axios from 'axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-const client = axios.create({ baseURL: API_BASE_URL })
+// Session cookies are httpOnly and set by the API; the browser attaches them because of
+// withCredentials. Nothing session-related is ever stored in localStorage.
+const client = axios.create({ baseURL: API_BASE_URL, withCredentials: true })
+
+const CSRF_HEADER = 'X-CSRF-Token'
+const SAFE_METHODS = new Set(['get', 'head', 'options'])
+// Auth endpoints whose 401s mean "wrong credentials / no session", not "access token expired".
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout', '/auth/csrf']
+
+// --- CSRF token (held in memory only) -----------------------------------------------
+
+let csrfToken = null
+
+export async function fetchCsrfToken() {
+  const { data } = await client.get('/auth/csrf')
+  csrfToken = data.csrf_token
+  return csrfToken
+}
+
+// Incremented after every successful refresh. Each request remembers the epoch it was sent
+// in, so a 401 that arrives after a refresh already finished retries straight away
+// instead of rotating the token a second time.
+let sessionEpoch = 0
+
+client.interceptors.request.use(async (config) => {
+  config._epoch = sessionEpoch
+  if (!SAFE_METHODS.has((config.method || 'get').toLowerCase())) {
+    if (!csrfToken) await fetchCsrfToken()
+    config.headers[CSRF_HEADER] = csrfToken
+  }
+  return config
+})
+
+// --- session expiry notifications ---------------------------------------------------
+
+const sessionExpiredListeners = new Set()
+
+export function onSessionExpired(listener) {
+  sessionExpiredListeners.add(listener)
+  return () => sessionExpiredListeners.delete(listener)
+}
+
+// --- single-flight refresh ----------------------------------------------------------
+
+// Every refresh rotates the refresh token, and the server treats a second use of the same
+// token as theft (revoking the whole session). So when several requests hit 401 at once,
+// they must all wait on ONE refresh call instead of each starting their own.
+let refreshInFlight = null
+
+function refreshSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = client
+      .post('/auth/refresh', null, { _noRetry: true })
+      .then(({ data }) => {
+        csrfToken = data.csrf_token
+        sessionEpoch += 1
+        return data.user
+      })
+      .finally(() => {
+        refreshInFlight = null
+      })
+  }
+  return refreshInFlight
+}
+
+client.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const { config, response } = error
+    if (!config || !response || config._noRetry || config._retried) throw error
+
+    if (response.status === 403 && response.data?.error_type === 'csrf_failed') {
+      config._retried = true
+      await fetchCsrfToken()
+      return client(config)
+    }
+
+    if (response.status === 401 && !NO_REFRESH_PATHS.some((p) => config.url?.startsWith(p))) {
+      config._retried = true
+      try {
+        if (config._epoch === sessionEpoch) await refreshSession()
+      } catch {
+        sessionExpiredListeners.forEach((listener) => listener())
+        throw error
+      }
+      return client(config)
+    }
+
+    throw error
+  },
+)
 
 export function extractErrorMessage(error) {
   const data = error?.response?.data
   if (data?.message) {
     return data.detail ? `${data.message} (${data.detail})` : data.message
   }
+  // FastAPI request-validation errors: { detail: [{ msg, loc, ... }] }
+  if (Array.isArray(data?.detail)) {
+    return data.detail.map((d) => d.msg).join('; ')
+  }
   if (error?.message) return error.message
   return 'An unexpected error occurred.'
 }
+
+// --- auth ---------------------------------------------------------------------------
+
+async function startSession(path, email, password) {
+  const { data } = await client.post(path, { email, password })
+  csrfToken = data.csrf_token
+  return data.user
+}
+
+export function login(email, password) {
+  return startSession('/auth/login', email, password)
+}
+
+export function register(email, password) {
+  return startSession('/auth/register', email, password)
+}
+
+export async function logout() {
+  try {
+    await client.post('/auth/logout')
+  } finally {
+    csrfToken = null
+  }
+}
+
+export async function getCurrentUser() {
+  const { data } = await client.get('/auth/me')
+  return data
+}
+
+// --- documents, chat, search --------------------------------------------------------
 
 export async function uploadDocument(file, { forceOcr = false, onProgress } = {}) {
   const formData = new FormData()
@@ -51,23 +176,5 @@ export async function sendChatMessage(question, settings) {
 
 export async function search(query, settings) {
   const { data } = await client.post('/search', { query, settings })
-  return data
-}
-
-export async function transcribeAudio(file) {
-  const formData = new FormData()
-  formData.append('file', file)
-  const { data } = await client.post('/audio/transcribe', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
-  return data
-}
-
-export async function analyzeImage(file) {
-  const formData = new FormData()
-  formData.append('file', file)
-  const { data } = await client.post('/images/analyze', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
   return data
 }
