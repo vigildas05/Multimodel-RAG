@@ -28,6 +28,8 @@ from app.services.vision_service import describe_image
 from app.services.whisper_service import WhisperService
 from app.storage.document_registry import DocumentRegistry
 from app.storage.upload_store import UploadStore
+from security.gateway import SecurityGateway
+from security.types import Decision
 from app.storage.workspace_repository import WorkspaceRepository
 
 logger = logging.getLogger("app.services.document")
@@ -51,6 +53,7 @@ class DocumentService:
         chunk_overlap: int,
         upload_store: UploadStore,
         settings: Settings,
+        security_gateway: SecurityGateway,
     ):
         self._session_factory = session_factory
         self._workspaces = WorkspaceRepository(session_factory)
@@ -64,6 +67,7 @@ class DocumentService:
         self._chunk_overlap = chunk_overlap
         self._upload_store = upload_store
         self._settings = settings
+        self._security_gateway = security_gateway
 
     def _registry(self, scope: TenantScope) -> DocumentRegistry:
         return DocumentRegistry(self._session_factory, scope.workspace_id)
@@ -293,6 +297,40 @@ class DocumentService:
             packed.append((buffer_text, buffer_start, buffer_end))
         return packed
 
+    async def _guard_chunks(self, scope: TenantScope, chunks: list[Chunk]) -> None:
+        """Layer 2 (ingest guard): scan every chunk — including OCR, transcript and image
+        description text — for indirect prompt injection, and quarantine risky ones."""
+        results = await run_in_threadpool(self._security_gateway.scan_chunks, [c.text for c in chunks])
+        quarantined = []
+        for chunk, result in zip(chunks, results):
+            chunk.injection_risk = round(result.risk, 3)
+            if result.decision == Decision.BLOCK:
+                chunk.quarantined = True
+                chunk.quarantine_reasons = result.categories or ["classifier"]
+                if result.classifier_score is not None and result.classifier_score >= 0.5:
+                    chunk.quarantine_reasons = sorted({*chunk.quarantine_reasons, "classifier"})
+                quarantined.append((chunk, result))
+        if quarantined:
+            await run_in_threadpool(
+                record_security_event,
+                self._session_factory,
+                "chunk_quarantined",
+                "ingest_guard",
+                severity="high",
+                workspace_id=scope.workspace_id,
+                user_id=scope.user_id,
+                risk_score=max(r.risk for _, r in quarantined),
+                details={
+                    "document_id": chunks[0].document_id,
+                    "filename": chunks[0].filename,
+                    "count": len(quarantined),
+                    "of_chunks": len(chunks),
+                    "samples": [
+                        {"chunk_index": c.chunk_index, **r.summary(), "text": c.text[:150]} for c, r in quarantined[:5]
+                    ],
+                },
+            )
+
     def _record_hidden_text(self, scope: TenantScope, document_id: str, hidden: list) -> None:
         """Recorded before chunking, so it's logged even if nothing visible is left."""
         by_reason: dict[str, int] = {}
@@ -329,6 +367,7 @@ class DocumentService:
 
     async def _embed_and_store(self, scope: TenantScope, chunks: list[Chunk]) -> None:
         texts = [c.text for c in chunks]
+        await self._guard_chunks(scope, chunks)
         embeddings = await run_in_threadpool(self._embedding_service.embed_chunks, texts)
         for chunk, vec in zip(chunks, embeddings):
             chunk.embedding = vec.tolist()
@@ -360,6 +399,7 @@ class DocumentService:
             duration_seconds,
             used_ocr,
             hidden_span_count,
+            sum(c.quarantined for c in chunks),
         )
         record = await run_in_threadpool(registry.get, document_id)
         return record

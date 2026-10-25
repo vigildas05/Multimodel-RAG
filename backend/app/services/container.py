@@ -102,7 +102,8 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
     )
     llm_provider = get_llm_provider(settings)
     upload_store = UploadStore(Path(settings.UPLOAD_DIR))
-    security_gateway = build_security_gateway(settings, preload=role == "api")
+    # Both roles scan text: the API scans questions, the worker scans document chunks.
+    security_gateway = build_security_gateway(settings, preload=True)
 
     return Services(
         session_factory=session_factory,
@@ -136,6 +137,7 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
             chunk_overlap=settings.CHUNK_OVERLAP,
             upload_store=upload_store,
             settings=settings,
+            security_gateway=security_gateway,
         ),
         demo_service=DemoService(session_factory, vector_store, auth_service, settings, upload_store),
         security_gateway=security_gateway,

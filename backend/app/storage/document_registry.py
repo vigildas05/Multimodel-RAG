@@ -58,6 +58,7 @@ class DocumentRegistry:
         duration_seconds: float | None = None,
         used_ocr: bool | None = None,
         hidden_span_count: int | None = None,
+        quarantined_chunk_count: int | None = None,
     ) -> None:
         with self._session_factory.begin() as session:
             document = self._get_row(session, document_id)
@@ -76,6 +77,8 @@ class DocumentRegistry:
                 document.used_ocr = used_ocr
             if hidden_span_count is not None:
                 document.hidden_span_count = hidden_span_count
+            if quarantined_chunk_count is not None:
+                document.quarantined_chunk_count = quarantined_chunk_count
 
     def get(self, document_id: str) -> DocumentRecord | None:
         with self._session_factory() as session:
@@ -149,6 +152,7 @@ class DocumentRegistry:
             duration_seconds=document.duration_seconds,
             used_ocr=document.used_ocr,
             hidden_span_count=document.hidden_span_count,
+            quarantined_chunk_count=document.quarantined_chunk_count,
             storage_path=document.storage_path,
             size_bytes=document.size_bytes,
             sha256=document.sha256,

@@ -49,6 +49,7 @@ def _to_schema(record: DocumentRecord) -> DocumentMetadata:
         duration_seconds=record.duration_seconds,
         used_ocr=record.used_ocr,
         hidden_span_count=record.hidden_span_count,
+        quarantined_chunk_count=record.quarantined_chunk_count,
     )
 
 
@@ -144,6 +145,9 @@ async def get_document_chunks(
             audio_start_time=c.get("audio_start_time"),
             audio_end_time=c.get("audio_end_time"),
             is_ocr=c.get("is_ocr", False),
+            quarantined=c.get("quarantined", False),
+            quarantine_reasons=c.get("quarantine_reasons") or [],
+            injection_risk=c.get("injection_risk"),
         )
         for c in raw_chunks
     ]

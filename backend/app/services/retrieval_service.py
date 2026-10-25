@@ -94,7 +94,9 @@ class RetrievalService:
                 self._corpus_version(scope.workspace_id),
                 query,
                 top_k=candidate_pool_size,
-                load_corpus=lambda: self._vector_store.get_workspace_chunks(scope),
+                load_corpus=lambda: [
+                    c for c in self._vector_store.get_workspace_chunks(scope) if not c.get("quarantined")
+                ],
             )
             if settings.document_ids:
                 bm25_results = [r for r in bm25_results if r["document_id"] in settings.document_ids]
@@ -105,6 +107,9 @@ class RetrievalService:
             fused = self._reciprocal_rank_fusion(dense_results, bm25_results)
         else:
             fused = [{**r, "dense_score": r["score"]} for r in dense_results]
+
+        # Defence in depth: both retrievers already exclude quarantined chunks.
+        fused = [c for c in fused if not c.get("quarantined")]
 
         if settings.similarity_threshold is not None:
             fused = [c for c in fused if c.get("dense_score", 0.0) >= settings.similarity_threshold]

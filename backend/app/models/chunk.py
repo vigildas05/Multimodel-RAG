@@ -15,4 +15,9 @@ class Chunk:
     audio_start_time: float | None = None
     audio_end_time: float | None = None
     is_ocr: bool = False
+    # Set by the ingest guard: quarantined chunks are stored (so owners can review them)
+    # but never retrieved.
+    quarantined: bool = False
+    quarantine_reasons: list[str] = field(default_factory=list)
+    injection_risk: float | None = None
     embedding: list[float] | None = field(default=None, repr=False)

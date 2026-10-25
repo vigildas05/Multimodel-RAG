@@ -168,6 +168,8 @@ class DemoService:
                         num_pages=doc.num_pages,
                         duration_seconds=doc.duration_seconds,
                         used_ocr=doc.used_ocr,
+                        hidden_span_count=doc.hidden_span_count,
+                        quarantined_chunk_count=doc.quarantined_chunk_count,
                     )
                 )
             add_audit_log(

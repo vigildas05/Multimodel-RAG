@@ -13,6 +13,7 @@ class DocumentMetadata(BaseModel):
     duration_seconds: float | None = None
     used_ocr: bool = False
     hidden_span_count: int = 0
+    quarantined_chunk_count: int = 0
 
 
 class DocumentUploadResponse(BaseModel):
@@ -31,6 +32,9 @@ class ChunkResponse(BaseModel):
     audio_start_time: float | None = None
     audio_end_time: float | None = None
     is_ocr: bool = False
+    quarantined: bool = False
+    quarantine_reasons: list[str] = []
+    injection_risk: float | None = None
 
 
 class DocumentChunksResponse(BaseModel):

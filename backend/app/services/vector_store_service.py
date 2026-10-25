@@ -83,9 +83,12 @@ class VectorStoreService:
         self._ensure_collection()
 
     @staticmethod
-    def _scoped_filter(scope: TenantScope, *conditions: FieldCondition | Filter) -> Filter:
+    def _scoped_filter(
+        scope: TenantScope, *conditions: FieldCondition | Filter, exclude_quarantined: bool = False
+    ) -> Filter:
         return Filter(
-            must=[FieldCondition(key=WORKSPACE_FIELD, match=MatchValue(value=scope.workspace_id)), *conditions]
+            must=[FieldCondition(key=WORKSPACE_FIELD, match=MatchValue(value=scope.workspace_id)), *conditions],
+            must_not=[FieldCondition(key="quarantined", match=MatchValue(value=True))] if exclude_quarantined else None,
         )
 
     def upsert_chunks(self, scope: TenantScope, chunks: list[Chunk]) -> None:
@@ -110,6 +113,9 @@ class VectorStoreService:
                     "audio_end_time": chunk.audio_end_time,
                     "upload_timestamp": chunk.upload_timestamp,
                     "is_ocr": chunk.is_ocr,
+                    "quarantined": chunk.quarantined,
+                    "quarantine_reasons": chunk.quarantine_reasons,
+                    "injection_risk": chunk.injection_risk,
                 },
             )
             for chunk in chunks
@@ -176,7 +182,8 @@ class VectorStoreService:
             results = self._client.search(
                 collection_name=self._collection_name,
                 query_vector=query_vector,
-                query_filter=self._scoped_filter(scope, *conditions),
+                # Retrieval never sees quarantined chunks (see security ingest guard).
+                query_filter=self._scoped_filter(scope, *conditions, exclude_quarantined=True),
                 limit=top_k,
                 with_payload=True,
             )

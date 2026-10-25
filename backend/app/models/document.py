@@ -14,6 +14,7 @@ class DocumentRecord:
     duration_seconds: float | None = None
     used_ocr: bool = False
     hidden_span_count: int = 0
+    quarantined_chunk_count: int = 0
     # Store-relative path of the raw upload while it waits to be processed (see UploadStore).
     storage_path: str | None = None
     size_bytes: int | None = None

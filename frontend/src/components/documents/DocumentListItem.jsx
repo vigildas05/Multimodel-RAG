@@ -1,10 +1,13 @@
-import { EyeOff, FileAudio, FileImage, FileText, Trash2 } from 'lucide-react'
+import { EyeOff, FileAudio, FileImage, FileText, ShieldAlert, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import ProcessingStatusBadge from './ProcessingStatusBadge'
+import QuarantinePanel from './QuarantinePanel'
 
 const TYPE_ICON = { pdf: FileText, image: FileImage, audio: FileAudio }
 
 export default function DocumentListItem({ document, onDelete }) {
   const Icon = TYPE_ICON[document.file_type] || FileText
+  const [showQuarantine, setShowQuarantine] = useState(false)
 
   return (
     <div className="group flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-slate-800/60">
@@ -35,6 +38,19 @@ export default function DocumentListItem({ document, onDelete }) {
             <EyeOff size={11} />
             {document.hidden_span_count} hidden text span{document.hidden_span_count === 1 ? '' : 's'} removed
           </div>
+        )}
+        {document.quarantined_chunk_count > 0 && (
+          <>
+            <button
+              onClick={() => setShowQuarantine((v) => !v)}
+              className="mt-0.5 flex items-center gap-1 text-xs text-red-300/90 hover:text-red-200"
+            >
+              <ShieldAlert size={11} />
+              {document.quarantined_chunk_count} chunk{document.quarantined_chunk_count === 1 ? '' : 's'} quarantined
+              <span className="text-slate-500">· {showQuarantine ? 'hide' : 'why?'}</span>
+            </button>
+            {showQuarantine && <QuarantinePanel documentId={document.document_id} />}
+          </>
         )}
       </div>
       <button
