@@ -124,11 +124,20 @@ python -m venv venv
 ./venv/Scripts/activate        # Windows; use `source venv/bin/activate` on macOS/Linux
 pip install -r requirements.txt
 alembic upgrade head           # create / migrate the Postgres schema
+python -m app.cli seed-demo    # one-time: load examples/ into the demo template
 uvicorn app.main:app --reload --port 8000
 ```
 
 First startup downloads the embedding/reranker models from Hugging Face (a few hundred MB,
-one-time, cached afterward).
+one-time, cached afterward). Startup takes ~20–30 s while models load; the API answers once
+the log says `Application startup complete`.
+
+Optional:
+
+- `python -m app.cli create-admin --email you@example.com` creates an admin account
+  (prompts for a password). There is no way to become admin through the web app.
+- Set `JWT_SECRET_KEY` in `backend/.env` to stay signed in across backend restarts. Without
+  it, a random key is used and everyone is signed out whenever the backend restarts.
 
 ### 5. Run the frontend
 
@@ -138,7 +147,20 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+Open **`http://localhost:5173`** (use `localhost`, not `127.0.0.1`: CORS and the session
+cookies are configured for `localhost`).
+
+### Day-to-day
+
+After the first setup, three terminals are enough:
+
+```bash
+docker compose up -d postgres redis qdrant      # repo root; also make sure Ollama is running
+cd backend && ./venv/Scripts/activate && uvicorn app.main:app --reload --port 8000
+cd frontend && npm run dev
+```
+
+Run `alembic upgrade head` again after pulling changes that add migrations.
 
 ### Or run backend + Qdrant via Docker Compose
 
@@ -152,9 +174,13 @@ The backend container reaches your host's Ollama via `host.docker.internal:11434
 
 ## Try it
 
-1. Upload the sample files in `examples/` (a PDF, an image, and an audio clip).
-2. Ask a question that spans multiple documents — the answer will cite each source with
-   its page number, audio timestamp, or chunk ID.
+1. On the sign-in page, click **Try the demo, no sign-up**. You get a private, 24-hour
+   workspace that already contains the sample files from `examples/` (a PDF, an image, and
+   an audio clip), with 20 queries per day. Or create an account and upload them yourself.
+2. Ask a question that spans multiple documents (e.g. *"What mechanism does the
+   transformer architecture rely on?"*) — the answer will cite each source with its page
+   number, audio timestamp, or chunk ID. The first answer is slower while Ollama loads the
+   model.
 3. Open **Advanced Retrieval Settings** and toggle Reranking / Hybrid Search, or adjust
    Top-K and Temperature, to see retrieval and answers change.
 
