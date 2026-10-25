@@ -48,6 +48,7 @@ def _to_schema(record: DocumentRecord) -> DocumentMetadata:
         num_pages=record.num_pages,
         duration_seconds=record.duration_seconds,
         used_ocr=record.used_ocr,
+        hidden_span_count=record.hidden_span_count,
     )
 
 

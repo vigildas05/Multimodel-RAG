@@ -1,4 +1,4 @@
-import { FileAudio, FileImage, FileText, Trash2 } from 'lucide-react'
+import { EyeOff, FileAudio, FileImage, FileText, Trash2 } from 'lucide-react'
 import ProcessingStatusBadge from './ProcessingStatusBadge'
 
 const TYPE_ICON = { pdf: FileText, image: FileImage, audio: FileAudio }
@@ -27,6 +27,15 @@ export default function DocumentListItem({ document, onDelete }) {
                 document.used_ocr ? ' · OCR' : ''
               }`}
         </div>
+        {document.hidden_span_count > 0 && (
+          <div
+            className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/90"
+            title="Text a reader couldn't see (white-on-white, tiny, invisible or off-page) was removed before indexing, because hidden text is a common way to smuggle instructions to an AI."
+          >
+            <EyeOff size={11} />
+            {document.hidden_span_count} hidden text span{document.hidden_span_count === 1 ? '' : 's'} removed
+          </div>
+        )}
       </div>
       <button
         onClick={() => onDelete(document.document_id)}

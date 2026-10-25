@@ -57,6 +57,7 @@ class DocumentRegistry:
         num_pages: int | None = None,
         duration_seconds: float | None = None,
         used_ocr: bool | None = None,
+        hidden_span_count: int | None = None,
     ) -> None:
         with self._session_factory.begin() as session:
             document = self._get_row(session, document_id)
@@ -73,6 +74,8 @@ class DocumentRegistry:
                 document.duration_seconds = duration_seconds
             if used_ocr is not None:
                 document.used_ocr = used_ocr
+            if hidden_span_count is not None:
+                document.hidden_span_count = hidden_span_count
 
     def get(self, document_id: str) -> DocumentRecord | None:
         with self._session_factory() as session:
@@ -145,6 +148,7 @@ class DocumentRegistry:
             num_pages=document.num_pages,
             duration_seconds=document.duration_seconds,
             used_ocr=document.used_ocr,
+            hidden_span_count=document.hidden_span_count,
             storage_path=document.storage_path,
             size_bytes=document.size_bytes,
             sha256=document.sha256,

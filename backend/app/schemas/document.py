@@ -12,6 +12,7 @@ class DocumentMetadata(BaseModel):
     num_pages: int | None = None
     duration_seconds: float | None = None
     used_ocr: bool = False
+    hidden_span_count: int = 0
 
 
 class DocumentUploadResponse(BaseModel):

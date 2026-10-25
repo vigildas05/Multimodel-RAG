@@ -132,6 +132,9 @@ class DocumentService:
         pages = parsed.pages
         if not pages:
             raise EmptyDocumentError("The uploaded PDF has no pages.")
+        hidden = [span for page in pages for span in page.hidden_spans]
+        if hidden:
+            await run_in_threadpool(self._record_hidden_text, scope, document_id, hidden)
 
         chunks: list[Chunk] = []
         chunk_index = 0
@@ -172,7 +175,16 @@ class DocumentService:
             )
 
         await self._embed_and_store(scope, chunks)
-        return await self._finalize(scope, document_id, filename, "pdf", chunks, num_pages=len(pages), used_ocr=any_ocr)
+        return await self._finalize(
+            scope,
+            document_id,
+            filename,
+            "pdf",
+            chunks,
+            num_pages=len(pages),
+            used_ocr=any_ocr,
+            hidden_span_count=len(hidden),
+        )
 
     async def ingest_image(
         self,
@@ -281,6 +293,31 @@ class DocumentService:
             packed.append((buffer_text, buffer_start, buffer_end))
         return packed
 
+    def _record_hidden_text(self, scope: TenantScope, document_id: str, hidden: list) -> None:
+        """Recorded before chunking, so it's logged even if nothing visible is left."""
+        by_reason: dict[str, int] = {}
+        for span in hidden:
+            for reason in span.reasons:
+                by_reason[reason] = by_reason.get(reason, 0) + 1
+        record_security_event(
+            self._session_factory,
+            "hidden_content_stripped",
+            "ingestion",
+            severity="medium",
+            workspace_id=scope.workspace_id,
+            user_id=scope.user_id,
+            details={
+                "document_id": document_id,
+                "count": len(hidden),
+                "by_reason": by_reason,
+                # Truncated samples for review in the admin dashboard.
+                "samples": [
+                    {"page": s.page_number, "reasons": s.reasons, "text": s.text[:120]} for s in hidden[:5]
+                ],
+            },
+        )
+        logger.info("Stripped %d hidden text spans from %s: %s", len(hidden), document_id, by_reason)
+
     async def _sandboxed(self, target: str, *args):
         return await run_in_threadpool(
             run_sandboxed,
@@ -310,6 +347,7 @@ class DocumentService:
         num_pages: int | None = None,
         duration_seconds: float | None = None,
         used_ocr: bool = False,
+        hidden_span_count: int = 0,
     ) -> DocumentRecord:
         registry = self._registry(scope)
         await run_in_threadpool(
@@ -321,6 +359,7 @@ class DocumentService:
             num_pages,
             duration_seconds,
             used_ocr,
+            hidden_span_count,
         )
         record = await run_in_threadpool(registry.get, document_id)
         return record

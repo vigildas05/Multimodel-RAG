@@ -1,10 +1,12 @@
 """PDF text extraction via PyMuPDF, with a heuristic scanned-page detector that
-routes low-text pages to OCR."""
+routes low-text pages to OCR, and hidden-text stripping (see pdf_hidden_text)."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import fitz  # PyMuPDF
+
+from app.services.pdf_hidden_text import HiddenSpan, analyze_page
 
 logger = logging.getLogger("app.services.pdf")
 
@@ -17,8 +19,9 @@ MIN_TEXT_CHARS_PER_PAGE = 20
 @dataclass
 class PageContent:
     page_number: int  # 1-indexed
-    text: str
+    text: str  # visible text only; hidden spans are removed
     is_scanned: bool
+    hidden_spans: list[HiddenSpan] = field(default_factory=list)
 
 
 def extract_pages(pdf_bytes: bytes) -> list[PageContent]:
@@ -29,9 +32,9 @@ def extract_pages(pdf_bytes: bytes) -> list[PageContent]:
 def extract_pages_from_document(doc: "fitz.Document") -> list[PageContent]:
     pages: list[PageContent] = []
     for i, page in enumerate(doc):
-        text = page.get_text("text").strip()
+        text, hidden = analyze_page(page, i + 1)
         is_scanned = len(text) < MIN_TEXT_CHARS_PER_PAGE
-        pages.append(PageContent(page_number=i + 1, text=text, is_scanned=is_scanned))
+        pages.append(PageContent(page_number=i + 1, text=text, is_scanned=is_scanned, hidden_spans=hidden))
     return pages
 
 
