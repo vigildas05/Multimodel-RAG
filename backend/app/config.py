@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     # "development" | "test" | "production". Production refuses to start with insecure settings.
     APP_ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:5173"
+    # "text" (readable, local dev) or "json" (one object per line with request IDs; production).
+    LOG_FORMAT: str = "text"
+    LOG_LEVEL: str = "INFO"
+    # Prometheus metrics at GET /metrics. With METRICS_TOKEN set, scrapers must send
+    # "Authorization: Bearer <token>"; in production the endpoint is off unless a token is set.
+    METRICS_ENABLED: bool = True
+    METRICS_TOKEN: str = ""
 
     # --- Auth ---
     # HS256 signing key for access tokens, >= 32 bytes. Generate with:

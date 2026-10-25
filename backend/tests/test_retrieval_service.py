@@ -66,7 +66,7 @@ def populated_service(embedder, reranker):
             page_number=1,
             embedding=vec.tolist(),
         )
-        for i, (text, vec) in enumerate(zip(DOCS, vectors))
+        for i, (text, vec) in enumerate(zip(DOCS, vectors, strict=False))
     ]
     store.upsert_chunks(SCOPE, chunks)
 

@@ -4,6 +4,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from helpers import signup, upload_pdf
 from sqlalchemy import select
 
 from app.auth.service import AuthenticatedUser
@@ -11,7 +12,6 @@ from app.config import get_settings
 from app.core.exceptions import QuotaExceededError
 from app.db.models import UsageQuota, Workspace
 from app.services.quota_service import QuotaService
-from helpers import signup, upload_pdf
 
 
 def test_quota_blocks_queries_over_the_limit(client, monkeypatch):

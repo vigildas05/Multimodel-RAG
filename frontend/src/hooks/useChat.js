@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import * as api from '../api/client'
-import { useAppContext } from '../context/AppContext'
+import { useAppContext } from '../context/useAppContext'
 
 export function useChat() {
   const { state, dispatch } = useAppContext()

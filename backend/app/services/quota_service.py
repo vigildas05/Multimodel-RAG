@@ -8,7 +8,7 @@ race past the limit. A request that fails after consuming gets its query refunde
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -28,7 +28,7 @@ class QuotaTicket:
 
 
 def _today() -> date:
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
 
 
 class QuotaService:

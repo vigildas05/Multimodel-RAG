@@ -5,20 +5,19 @@ BM25 indexes know to rebuild.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from sqlalchemy.orm import Session, sessionmaker
-
-from app.core.exceptions import AppError, EmptyDocumentError, UploadRejectedError
-from app.db.audit import record_security_event
 from app.config import Settings
+from app.core.exceptions import AppError, EmptyDocumentError, UploadRejectedError
 from app.core.tenancy import TenantScope
+from app.db.audit import record_security_event
+from app.ingestion.sandbox import run_sandboxed
 from app.models.chunk import Chunk
 from app.models.document import DocumentRecord
-from app.ingestion.sandbox import run_sandboxed
 from app.services.chunking_service import RecursiveChunker
 from app.services.embedding_service import EmbeddingService
 from app.services.llm.base import LLMProvider
@@ -28,15 +27,15 @@ from app.services.vision_service import describe_image
 from app.services.whisper_service import WhisperService
 from app.storage.document_registry import DocumentRegistry
 from app.storage.upload_store import UploadStore
+from app.storage.workspace_repository import WorkspaceRepository
 from security.gateway import SecurityGateway
 from security.types import Decision
-from app.storage.workspace_repository import WorkspaceRepository
 
 logger = logging.getLogger("app.services.document")
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class DocumentService:
@@ -302,7 +301,7 @@ class DocumentService:
         description text — for indirect prompt injection, and quarantine risky ones."""
         results = await run_in_threadpool(self._security_gateway.scan_chunks, [c.text for c in chunks])
         quarantined = []
-        for chunk, result in zip(chunks, results):
+        for chunk, result in zip(chunks, results, strict=False):
             chunk.injection_risk = round(result.risk, 3)
             if result.decision == Decision.BLOCK:
                 chunk.quarantined = True
@@ -369,7 +368,7 @@ class DocumentService:
         texts = [c.text for c in chunks]
         await self._guard_chunks(scope, chunks)
         embeddings = await run_in_threadpool(self._embedding_service.embed_chunks, texts)
-        for chunk, vec in zip(chunks, embeddings):
+        for chunk, vec in zip(chunks, embeddings, strict=False):
             chunk.embedding = vec.tolist()
         await run_in_threadpool(self._vector_store.upsert_chunks, scope, chunks)
         # Bump only after the write is visible, so a reader that sees the new version

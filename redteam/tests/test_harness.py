@@ -13,6 +13,7 @@ sys.path.insert(0, str(REDTEAM))
 import build_dataset  # noqa: E402
 import harness  # noqa: E402
 import run_eval  # noqa: E402
+
 from security.config import GatewayConfig  # noqa: E402
 from security.gateway import SecurityGateway  # noqa: E402
 from security.prompt import build_prompt  # noqa: E402

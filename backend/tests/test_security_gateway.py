@@ -1,11 +1,11 @@
 """Input guard: risk scoring (unit) and enforcement on /chat (API)."""
 
 import pytest
+from helpers import signup, upload_pdf
 from sqlalchemy import select
 
 from app.db.models import QueryLog, SecurityEvent
 from app.services.llm.base import LLMGenerationResult, LLMProvider
-from helpers import signup, upload_pdf
 from security.classifier import _windows
 from security.config import GatewayConfig
 from security.gateway import SecurityGateway

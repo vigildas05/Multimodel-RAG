@@ -10,7 +10,8 @@ from app.db.base import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep loggers created before migrations run (e.g. when migrating in-process in tests).
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The URL comes from app settings unless a caller (e.g. the test suite) has already
 # set one programmatically on the Alembic config.

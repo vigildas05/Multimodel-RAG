@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -13,7 +13,7 @@ def _record(filename: str = "paper.pdf", uploaded_at: datetime | None = None) ->
         filename=filename,
         file_type="pdf",
         status="processing",
-        upload_timestamp=(uploaded_at or datetime.now(timezone.utc)).isoformat(),
+        upload_timestamp=(uploaded_at or datetime.now(UTC)).isoformat(),
     )
 
 
@@ -58,7 +58,7 @@ def test_update_status_only_changes_given_fields(session_factory, make_workspace
 
 def test_list_all_is_newest_first(session_factory, make_workspace):
     registry = DocumentRegistry(session_factory, make_workspace())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     older, newer = _record("old.pdf", now - timedelta(minutes=5)), _record("new.pdf", now)
     registry.create(older)
     registry.create(newer)

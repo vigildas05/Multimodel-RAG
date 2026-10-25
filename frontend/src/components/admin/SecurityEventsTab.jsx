@@ -3,7 +3,8 @@ import { Fragment, useEffect, useState } from 'react'
 import * as api from '../../api/client'
 import ErrorBanner from '../common/ErrorBanner'
 import LoadingSpinner from '../common/LoadingSpinner'
-import { DailyBars, Section, SeverityBadge, SEVERITIES, StatGrid, StatTile, Table, num, selectCls, when } from './ui'
+import { SEVERITIES, num, selectCls, when } from './format'
+import { DailyBars, Section, SeverityBadge, StatGrid, StatTile, Table } from './ui'
 
 const PAGE_SIZE = 50
 const EMPTY_FILTERS = { event_type: '', source: '', severity: '', user_id: '', workspace_id: '', from: '', to: '' }

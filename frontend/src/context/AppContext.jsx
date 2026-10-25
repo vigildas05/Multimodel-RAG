@@ -1,17 +1,5 @@
-import { createContext, useContext, useReducer } from 'react'
-
-const DEFAULT_SETTINGS = {
-  retrieval_top_k: 10,
-  final_context_chunks: 4,
-  chunk_size: 800,
-  chunk_overlap: 100,
-  similarity_threshold: null,
-  use_reranking: true,
-  use_hybrid_search: true,
-  temperature: 0.2,
-  top_p: 0.9,
-  max_output_tokens: 800,
-}
+import { useReducer } from 'react'
+import { AppContext, DEFAULT_SETTINGS } from './useAppContext'
 
 const initialState = {
   documents: [],
@@ -39,17 +27,9 @@ function reducer(state, action) {
   }
 }
 
-const AppContext = createContext(null)
-
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState)
   return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>
 }
 
-export function useAppContext() {
-  const ctx = useContext(AppContext)
-  if (!ctx) throw new Error('useAppContext must be used within AppProvider')
-  return ctx
-}
 
-export { DEFAULT_SETTINGS }

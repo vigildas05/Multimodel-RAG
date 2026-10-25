@@ -18,7 +18,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
@@ -59,12 +59,12 @@ def ingest_corpus(dataset: dict, embedder: EmbeddingService, store: VectorStoreS
                     file_type="pdf",
                     text=tc.text,
                     chunk_index=i,
-                    upload_timestamp=datetime.now(timezone.utc).isoformat(),
+                    upload_timestamp=datetime.now(UTC).isoformat(),
                     page_number=1,
                 )
             )
     vectors = embedder.embed_chunks([c.text for c in all_chunks])
-    for chunk, vec in zip(all_chunks, vectors):
+    for chunk, vec in zip(all_chunks, vectors, strict=False):
         chunk.embedding = vec.tolist()
     store.upsert_chunks(EVAL_SCOPE, all_chunks)
     return all_chunks

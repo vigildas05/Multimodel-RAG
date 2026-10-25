@@ -8,6 +8,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from helpers import signup
 from sqlalchemy import select, update
 
 from app.billing.credits import CreditService
@@ -21,7 +22,6 @@ from app.billing.service import BillingService
 from app.config import get_settings
 from app.core.exceptions import ConfigurationError
 from app.db.models import Payment, SecurityEvent, User
-from helpers import signup
 
 KEY_ID, KEY_SECRET, WEBHOOK_SECRET = "rzp_test_abc123", "test_key_secret", "test_webhook_secret"
 

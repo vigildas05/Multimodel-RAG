@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import * as api from '../../api/client'
 import ErrorBanner from '../common/ErrorBanner'
 import LoadingSpinner from '../common/LoadingSpinner'
-import { Section, StatGrid, StatTile, Table, num, when } from './ui'
+import { num, when } from './format'
+import { Section, StatGrid, StatTile, Table } from './ui'
 
 const inr = (paise) => `₹${(paise / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
 

@@ -145,7 +145,7 @@ export default function BillingPage() {
             <section>
               <h2 className="mb-2 text-sm font-semibold text-slate-300">Buy credits</h2>
               {!billing.payments_enabled && (
-                <p className="mb-2 text-xs text-slate-500">Payments aren't configured on this server.</p>
+                <p className="mb-2 text-xs text-slate-500">Payments are not configured on this server.</p>
               )}
               {user.is_demo && <p className="mb-2 text-xs text-slate-500">Create a free account to buy credits.</p>}
               <div className="grid gap-3 sm:grid-cols-3">

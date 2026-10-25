@@ -47,7 +47,7 @@ class SecurityGateway:
         per_item_ms = (time.perf_counter() - started) * 1000 / max(len(texts), 1)
 
         results = []
-        for item_findings, p in zip(findings, probabilities):
+        for item_findings, p in zip(findings, probabilities, strict=False):
             heuristic = combine_weights(item_findings)
             classifier = p * self.config.classifier_weight
             risk = 1.0 - (1.0 - heuristic) * (1.0 - classifier)

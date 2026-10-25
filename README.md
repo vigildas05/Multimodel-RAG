@@ -418,7 +418,36 @@ Example `/chat` response:
 cd backend
 pytest tests/ -v          # needs Postgres, Redis and Qdrant from docker compose (auto-skipped otherwise)
 python eval/run_eval.py   # retrieval quality metrics (Recall@K, Precision@K, MRR)
+ruff check ..             # Python lint (backend/ and redteam/), config in ruff.toml
+cd ../frontend && npx eslint . --max-warnings 0
 ```
+
+## CI and observability
+
+**CI** (`.github/workflows/`), on every push to `main` and every pull request:
+
+| Workflow | Job | What it checks |
+|---|---|---|
+| `ci` | Lint (ruff) | pyflakes, bugbear, import order, bandit-style security rules |
+| `ci` | Frontend | ESLint (React, hooks, `react/no-danger`), production build, `npm audit` (fails on high/critical) |
+| `ci` | Backend tests | Full pytest suite against Postgres, Redis and Qdrant service containers. A test that would skip because a service is unreachable **fails** in CI (`REQUIRE_TEST_SERVICES=1`), so the tenant-isolation suite can't pass by being skipped |
+| `ci` | Production image | Builds the multi-stage Dockerfile and checks the container doesn't run as root |
+| `red-team` | Red-team gate | Harness tests and the ASR/FPR gate (see [Measured results](#measured-results)) |
+
+**Structured logs.** With `LOG_FORMAT=json` (the production setting) every log line is a JSON
+object with a timestamp, level, logger and the request ID, which is also returned in the
+`X-Request-ID` header. Each request writes one `app.access` line (method, path without the
+query string, route template, status, duration, client IP). Headers, bodies and question
+text are never logged.
+
+**Metrics.** `GET /metrics` serves Prometheus metrics: request counts and latency by route
+template, security events by type and severity, chat queries (answered/blocked), per-stage
+query latency (security, retrieval, generation), LLM tokens and credits charged. Routes are
+labelled by template (`/documents/{document_id}`) and unknown paths collapse into one label,
+so no IDs or user data appear in metrics. In production the endpoint is disabled unless
+`METRICS_TOKEN` is set (scrapers send `Authorization: Bearer <token>`), and Caddy blocks it from
+the internet; scrape `http://api:8000/metrics` from the private Docker network. The ingestion
+worker doesn't export metrics yet.
 
 ## Other limitations
 

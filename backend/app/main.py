@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.exceptions import ConfigurationError, DatabaseUnavailableError
 from app.core.logging_config import configure_logging
+from app.core.metrics import metrics_endpoint
 from app.core.middleware import BodySizeLimitMiddleware, global_rate_limit_middleware, security_middleware
 from app.core.rate_limit import RateLimiter, build_policies
 from app.db.session import create_db_engine, create_session_factory
@@ -25,8 +26,8 @@ logger = logging.getLogger("app.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_logging()
     settings = get_settings()
+    configure_logging(settings.LOG_FORMAT, settings.LOG_LEVEL)
     logger.info("Starting up: loading models and connecting to services...")
 
     app.state.db_engine = create_db_engine(settings)
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(search.router)
     app.include_router(usage.router)
     app.include_router(billing.router)
+    app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
 
     @app.get("/health")
     async def health() -> dict:

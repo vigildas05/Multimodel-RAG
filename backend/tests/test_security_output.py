@@ -3,14 +3,22 @@
 import re
 
 import pytest
+from helpers import signup, upload_pdf
 from sqlalchemy import select
 
 from app.db.models import QueryLog, SecurityEvent
 from app.services.llm.base import LLMGenerationResult, LLMProvider
-from helpers import signup, upload_pdf
 from security.config import GatewayConfig
 from security.gateway import SecurityGateway
-from security.output import detect_leak, luhn_valid, redact_pii, scan_output, strip_images, verhoeff_valid, verify_citations
+from security.output import (
+    detect_leak,
+    luhn_valid,
+    redact_pii,
+    scan_output,
+    strip_images,
+    verhoeff_valid,
+    verify_citations,
+)
 from security.prompt import SourceBlock, build_plain_prompt, build_prompt
 
 SOURCES = [

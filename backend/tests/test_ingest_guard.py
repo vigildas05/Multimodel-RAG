@@ -7,15 +7,15 @@ import uuid
 
 import fitz
 import pytest
+from helpers import signup
 from qdrant_client import QdrantClient
 from sqlalchemy import select
+from test_security_gateway import RecordingLLM
 
 from app.core.tenancy import TenantScope
 from app.db.models import SecurityEvent
 from app.models.chunk import Chunk
 from app.services.vector_store_service import VectorStoreService
-from helpers import signup
-from test_security_gateway import RecordingLLM
 
 LEGIT = "Mitochondria produce ATP through oxidative phosphorylation in the inner membrane. "
 INJECTION = (

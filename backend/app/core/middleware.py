@@ -5,6 +5,7 @@ import contextvars
 import json
 import logging
 import re
+import time
 import uuid
 
 from fastapi import Request
@@ -14,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.rate_limit import client_ip
 
 logger = logging.getLogger("app.core.middleware")
+access_logger = logging.getLogger("app.access")
 
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 _VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -47,14 +49,17 @@ def security_middleware(settings):
         incoming = request.headers.get("x-request-id", "")
         request_id = incoming if _VALID_REQUEST_ID.match(incoming) else uuid.uuid4().hex
         token = request_id_var.set(request_id)
+        started = time.perf_counter()
         try:
-            response = await call_next(request)
-        except Exception as exc:  # noqa: BLE001
-            # Handled here (not only by the app's handler, which Starlette runs outside all
-            # middleware) so the generic 500 still gets the request ID and security headers.
-            from app.core.exception_handlers import unexpected_error_response
+            try:
+                response = await call_next(request)
+            except Exception as exc:  # noqa: BLE001
+                # Handled here (not only by the app's handler, which Starlette runs outside all
+                # middleware) so the generic 500 still gets the request ID and security headers.
+                from app.core.exception_handlers import unexpected_error_response
 
-            response = unexpected_error_response(request, exc)
+                response = unexpected_error_response(request, exc)
+            _record_access(request, response.status_code, time.perf_counter() - started)
         finally:
             request_id_var.reset(token)
         response.headers["X-Request-ID"] = request_id
@@ -69,6 +74,24 @@ def security_middleware(settings):
         return response
 
     return middleware
+
+
+def _record_access(request: Request, status_code: int, seconds: float) -> None:
+    from app.core.metrics import observe_request, route_label
+
+    observe_request(request, status_code, seconds)
+    # Path without the query string (it can carry search text); never headers or bodies.
+    access_logger.info(
+        "%s %s %s %.0fms", request.method, request.url.path, status_code, seconds * 1000,
+        extra={
+            "http_method": request.method,
+            "http_path": request.url.path,
+            "http_route": route_label(request),
+            "http_status": status_code,
+            "duration_ms": round(seconds * 1000, 1),
+            "client_ip": client_ip(request),
+        },
+    )
 
 
 def global_rate_limit_middleware():

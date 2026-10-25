@@ -84,7 +84,7 @@ def _reasons(span: dict, page_rect: fitz.Rect, invisible: list[fitz.Rect], pix: 
         background = _background_color(pix, bbox & page_rect)
         if background is not None:
             text_color = _rgb(span["color"])
-            if max(abs(a - b) for a, b in zip(text_color, background)) <= LOW_CONTRAST_THRESHOLD:
+            if max(abs(a - b) for a, b in zip(text_color, background, strict=False)) <= LOW_CONTRAST_THRESHOLD:
                 reasons.append("low_contrast")
     return reasons
 

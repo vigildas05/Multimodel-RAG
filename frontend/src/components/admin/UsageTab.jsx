@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import * as api from '../../api/client'
 import ErrorBanner from '../common/ErrorBanner'
 import LoadingSpinner from '../common/LoadingSpinner'
-import { DailyBars, Section, StatGrid, StatTile, Table, ms, num, pct, selectCls } from './ui'
+import { ms, num, pct, selectCls } from './format'
+import { DailyBars, Section, StatGrid, StatTile, Table } from './ui'
 
 export default function UsageTab() {
   const [days, setDays] = useState(14)

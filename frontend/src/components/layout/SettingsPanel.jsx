@@ -1,7 +1,7 @@
 import { SlidersHorizontal } from 'lucide-react'
 import Slider from '../common/Slider'
 import Toggle from '../common/Toggle'
-import { useAppContext } from '../../context/AppContext'
+import { useAppContext } from '../../context/useAppContext'
 
 export default function SettingsPanel() {
   const { state, dispatch } = useAppContext()

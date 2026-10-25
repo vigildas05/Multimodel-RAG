@@ -45,6 +45,6 @@ def test_invalid_overlap_raises():
     chunker = RecursiveChunker()
     try:
         chunker.split("text", chunk_size=100, chunk_overlap=100)
-        assert False, "expected ValueError"
+        raise AssertionError("expected ValueError")
     except ValueError:
         pass

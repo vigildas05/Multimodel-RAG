@@ -8,6 +8,7 @@ import wave
 
 import fitz
 import pytest
+from helpers import make_pdf, signup
 from PIL import Image
 from sqlalchemy import select
 
@@ -17,7 +18,6 @@ from app.db.models import SecurityEvent
 from app.ingestion.file_types import detect_file_type
 from app.ingestion.sandbox import run_sandboxed
 from app.ingestion.validation import validate_upload
-from helpers import make_pdf, signup
 
 # --- sample files ---------------------------------------------------------------------
 

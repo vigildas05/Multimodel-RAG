@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from helpers import signup, upload_pdf
 from qdrant_client import QdrantClient
 
 from app.core.exceptions import NoRelevantResultsError, VectorStoreUnavailableError
@@ -26,7 +27,6 @@ from app.services.bm25_service import BM25Service
 from app.services.llm.base import LLMGenerationResult, LLMProvider
 from app.services.retrieval_service import RetrievalService, RetrievalSettings
 from app.services.vector_store_service import VectorStoreService
-from helpers import signup, upload_pdf
 
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 DIM = 64
@@ -44,7 +44,7 @@ class HashingEmbedder:
     def _vec(text: str) -> np.ndarray:
         v = np.zeros(DIM, dtype=np.float32)
         for token in re.findall(r"[a-z0-9]+", text.lower()):
-            v[int(hashlib.md5(token.encode()).hexdigest(), 16) % DIM] += 1.0
+            v[int(hashlib.md5(token.encode(), usedforsecurity=False).hexdigest(), 16) % DIM] += 1.0
         norm = np.linalg.norm(v)
         return v / norm if norm else v
 

@@ -4,7 +4,7 @@ report. Nothing here writes; every route that calls it is admin-only (routers/ad
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import Date, cast, func, select
@@ -257,7 +257,7 @@ def _utc_day(column):
 
 
 def _days_ago(days: int) -> datetime:
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     return today - timedelta(days=days - 1)
 
 

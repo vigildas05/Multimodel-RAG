@@ -2,12 +2,12 @@
 (CI runs heuristics-only; see conftest)."""
 
 import pytest
+from test_security_heuristics import ATTACKS, BENIGN
 
 from security.classifier import HuggingFaceClassifier
 from security.config import GatewayConfig
 from security.gateway import SecurityGateway
 from security.types import Decision
-from test_security_heuristics import ATTACKS, BENIGN
 
 MODEL = "protectai/deberta-v3-base-prompt-injection-v2"
 

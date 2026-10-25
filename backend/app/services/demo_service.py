@@ -15,7 +15,7 @@ existing vectors (no OCR, transcription or embedding at demo start).
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -35,11 +35,11 @@ logger = logging.getLogger("app.services.demo")
 DEMO_TEMPLATE_EMAIL = "demo-template@sentinel.invalid"
 DEMO_GUEST_EMAIL_DOMAIN = "demo.sentinel.invalid"
 # Not a valid argon2 hash: no password ever verifies, so these accounts can't sign in.
-UNUSABLE_PASSWORD_HASH = "!"
+UNUSABLE_PASSWORD_HASH = "!"  # noqa: S105 (a marker, not a secret)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class DemoService:

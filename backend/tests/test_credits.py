@@ -6,16 +6,16 @@ from concurrent.futures import ThreadPoolExecutor
 
 import fitz
 import pytest
+from helpers import signup, start_demo, upload_pdf
 from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError
+from test_demo import template  # noqa: F401  (fixture)
+from test_security_gateway import RecordingLLM
 
 from app.billing.credits import CreditService, add_entry
 from app.config import get_settings
 from app.core.exceptions import InsufficientCreditsError
 from app.db.models import CreditLedger
-from helpers import signup, start_demo, upload_pdf
-from test_demo import template  # noqa: F401  (fixture)
-from test_security_gateway import RecordingLLM
 
 
 def _set_balance(session_factory, user_id: str, target: int) -> None:
@@ -164,6 +164,6 @@ def test_rejected_files_are_free(account):
     assert credits.balance(user_id) == before
 
 
-def test_demo_users_get_demo_credits(client, session_factory, template):
+def test_demo_users_get_demo_credits(client, session_factory, template):  # noqa: F811 (fixture)
     user = start_demo(client).json()["user"]
     assert CreditService(session_factory).balance(user["user_id"]) == get_settings().DEMO_BONUS_CREDITS

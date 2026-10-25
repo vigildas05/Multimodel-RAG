@@ -21,7 +21,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.service import AuthenticatedUser
 from app.billing.credits import add_entry
-from app.billing.razorpay import PACKS, RazorpayClient, payments_enabled, verify_checkout_signature, verify_webhook_signature
+from app.billing.razorpay import (
+    PACKS,
+    RazorpayClient,
+    payments_enabled,
+    verify_checkout_signature,
+    verify_webhook_signature,
+)
 from app.config import Settings
 from app.core.exceptions import PaymentError, PaymentsUnavailableError, PermissionDeniedError
 from app.db.audit import add_audit_log, add_security_event, record_security_event

@@ -1,0 +1,132 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-python:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install -r backend/requirements-dev.txt
+      - run: ruff check --output-format github .
+
+  frontend:
+    name: Frontend (lint, build, audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx eslint . --max-warnings 0
+      - run: npm run build
+      # Production dependencies only; fails on high or critical advisories.
+      - run: npm audit --omit=dev --audit-level=high
+
+  backend-tests:
+    name: Backend tests (Postgres, Redis, Qdrant)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
+          POSTGRES_DB: sentinel_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinel_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      qdrant:
+        image: qdrant/qdrant:v1.19.1
+        ports: ["6333:6333"]
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel_test
+      # A test that would skip because a service is unreachable fails instead (tests/conftest.py).
+      REQUIRE_TEST_SERVICES: "1"
+      PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      # CPU-only torch first (the default wheel bundles ~2 GB of CUDA libraries), as in the Dockerfile.
+      - name: Install dependencies
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.0"
+          pip install -r requirements.txt
+
+      # Embedding/reranker models downloaded by the tests; keyed on requirements so a
+      # library upgrade starts from a clean cache.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do curl -sf http://localhost:6333/readyz && exit 0; sleep 2; done
+          echo "Qdrant did not become ready" && exit 1
+
+      - name: Tests
+        run: pytest -q -p no:cacheprovider
+
+  image:
+    name: Build production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      # The image is ~4.4 GB (torch, PaddleOCR); make room on the runner.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+      - uses: docker/setup-buildx-action@v3
+      # Build only (no registry push): proves the multi-stage, non-root image still builds.
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: false
+          load: true
+          tags: sentinel-rag-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+      - name: Image runs as a non-root user
+        run: |
+          uid=$(docker run --rm --entrypoint id sentinel-rag-api:ci -u)
+          echo "uid=$uid"
+          test "$uid" != "0"

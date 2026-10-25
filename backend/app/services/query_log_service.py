@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.service import AuthenticatedUser
+from app.core.metrics import observe_query
 from app.db.models import QueryLog
 
 
@@ -36,6 +37,7 @@ class QueryLogService:
         llm_model: str | None = None,
     ) -> None:
         usage = usage or {}
+        observe_query(blocked=blocked, timings=timings, usage=usage)
 
         def ms(value: float | None) -> int | None:
             return None if value is None else round(value)

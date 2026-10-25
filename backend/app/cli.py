@@ -21,10 +21,10 @@ from app.auth.tokens import resolve_jwt_secret
 from app.config import get_settings
 from app.core.exceptions import AppError
 from app.core.file_validation import new_document_id, sanitize_filename
-from app.ingestion.validation import validate_upload
 from app.db.audit import add_audit_log
 from app.db.models import User
 from app.db.session import create_db_engine, create_session_factory
+from app.ingestion.validation import validate_upload
 from app.models.document import DocumentRecord
 from app.services.document_service import now_iso
 from app.storage.document_registry import DocumentRegistry

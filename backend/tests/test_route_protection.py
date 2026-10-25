@@ -8,13 +8,16 @@ import uuid
 
 import pytest
 from fastapi.routing import APIRoute
-
-from app.auth.dependencies import get_current_user, require_admin
-from app.main import create_app
-from app.routers.auth import PUBLIC_ROUTES
 from helpers import fetch_csrf
 
-ALWAYS_PUBLIC = PUBLIC_ROUTES | {("GET", "/health"), ("GET", "/health/ready")}
+from app.auth.dependencies import get_current_user, require_admin
+from app.core.metrics import require_metrics_token
+from app.main import create_app
+from app.routers.auth import PUBLIC_ROUTES
+
+# /metrics has no user session: it is guarded by its own bearer token (and blocked at the
+# proxy); test_metrics_route_requires_its_token checks that.
+ALWAYS_PUBLIC = PUBLIC_ROUTES | {("GET", "/health"), ("GET", "/health/ready"), ("GET", "/metrics")}
 
 
 def _dependency_calls(dependant):
@@ -34,9 +37,14 @@ PROTECTED = [(m, p, r) for m, p, r in _api_routes() if (m, p) not in ALWAYS_PUBL
 
 
 def test_public_allow_list_is_small():
-    # csrf, register, login, refresh, logout, demo, razorpay webhook, health, health/ready.
-    # Growing this needs a real reason.
-    assert len(ALWAYS_PUBLIC) <= 9
+    # csrf, register, login, refresh, logout, demo, razorpay webhook, health, health/ready,
+    # metrics. Growing this needs a real reason.
+    assert len(ALWAYS_PUBLIC) <= 10
+
+
+def test_metrics_route_requires_its_token():
+    route = next(r for m, p, r in _api_routes() if p == "/metrics")
+    assert require_metrics_token in set(_dependency_calls(route.dependant))
 
 
 @pytest.mark.parametrize("method,path,route", PROTECTED, ids=[f"{m} {p}" for m, p, _ in PROTECTED])

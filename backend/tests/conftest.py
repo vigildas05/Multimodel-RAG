@@ -2,6 +2,7 @@
 (sentinel_test, created by docker/postgres/init) and are skipped if it isn't reachable."""
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,19 @@ from app.db.models import User, Workspace, WorkspaceMember  # noqa: E402
 from app.db.session import create_session_factory  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+# Locally, tests that need Postgres/Qdrant/Redis skip when those aren't running. In CI
+# (REQUIRE_TEST_SERVICES=1) such a skip is a failure, so a broken service container can't
+# turn the isolation suite into a silent pass.
+_SERVICE_SKIP = re.compile(r"not (running|reachable)")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if os.environ.get("REQUIRE_TEST_SERVICES") == "1" and report.skipped and _SERVICE_SKIP.search(str(report.longrepr)):
+        report.outcome = "failed"
 
 
 def alembic_config() -> Config:

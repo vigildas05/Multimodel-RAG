@@ -17,6 +17,7 @@ from app.auth.tokens import resolve_jwt_secret
 from app.billing.credits import CreditService
 from app.billing.service import BillingService
 from app.config import Settings
+from app.services.admin_service import AdminService
 from app.services.bm25_service import BM25Service
 from app.services.chunking_service import RecursiveChunker
 from app.services.demo_service import DemoService
@@ -25,18 +26,17 @@ from app.services.embedding_service import EmbeddingService
 from app.services.llm.base import LLMProvider
 from app.services.llm.factory import get_llm_provider
 from app.services.ocr_service import OCRService
+from app.services.query_log_service import QueryLogService
 from app.services.quota_service import QuotaService
 from app.services.reranking_service import RerankingService
 from app.services.retrieval_service import RetrievalService
 from app.services.vector_store_service import VectorStoreService
-from app.services.query_log_service import QueryLogService
-from app.services.admin_service import AdminService
 from app.services.whisper_service import WhisperService
+from app.storage.upload_store import UploadStore
+from app.storage.workspace_repository import WorkspaceRepository
 from security.classifier import HuggingFaceClassifier, NullClassifier
 from security.config import GatewayConfig
 from security.gateway import SecurityGateway
-from app.storage.upload_store import UploadStore
-from app.storage.workspace_repository import WorkspaceRepository
 
 
 class Lazy:

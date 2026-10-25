@@ -4,9 +4,10 @@ template, expiry, cleanup, and abuse limits."""
 import asyncio
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from helpers import login, make_pdf, signup, start_demo, upload_pdf
 from sqlalchemy import select, update
 
 from app.config import get_settings
@@ -16,7 +17,6 @@ from app.db.models import Document, User, Workspace
 from app.models.document import DocumentRecord
 from app.services.document_service import now_iso
 from app.storage.document_registry import DocumentRegistry
-from helpers import login, make_pdf, signup, start_demo, upload_pdf
 
 SAMPLE_TEXT = "The transformer architecture relies entirely on self-attention, dispensing with recurrence."
 
@@ -74,7 +74,7 @@ def test_demo_start_creates_private_seeded_workspace(client, template):
     assert usage["daily_query_limit"] == get_settings().DEMO_DAILY_QUERY_LIMIT
     assert usage["queries_today"] == 1
     expires = datetime.fromisoformat(usage["workspace_expires_at"])
-    assert timedelta(hours=23) < expires - datetime.now(timezone.utc) <= timedelta(hours=24)
+    assert timedelta(hours=23) < expires - datetime.now(UTC) <= timedelta(hours=24)
 
 
 def test_demo_visitors_are_isolated_from_each_other_and_the_template(app, client_factory, template):
@@ -124,7 +124,7 @@ def test_expired_demo_session_stops_working(client, session_factory, template):
         session.execute(
             update(Workspace)
             .where(Workspace.id == workspace_id)
-            .values(expires_at=datetime.now(timezone.utc) - timedelta(minutes=1))
+            .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
         )
     # Dead immediately, even though cleanup hasn't run and the access token hasn't expired.
     assert client.get("/auth/me").status_code == 401
@@ -139,7 +139,7 @@ def test_cleanup_removes_only_expired_guests(app, client_factory, session_factor
         session.execute(
             update(Workspace)
             .where(Workspace.id == expired["workspace_id"])
-            .values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+            .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
         )
     chunks_before = _template_chunk_count(app, template)
 
@@ -161,7 +161,7 @@ def test_cleanup_never_deletes_non_demo_accounts(app, client_factory, session_fa
         session.execute(
             update(Workspace)
             .where(Workspace.id == user["workspace_id"])
-            .values(is_demo=True, expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+            .values(is_demo=True, expires_at=datetime.now(UTC) - timedelta(seconds=1))
         )
     app.state.demo_service.cleanup_expired()
     with session_factory() as session:

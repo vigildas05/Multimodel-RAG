@@ -1,0 +1,22 @@
+# Lint config for the Python code (backend/ and redteam/). Run from the repo root:
+#   ruff check .
+target-version = "py311"
+line-length = 120
+extend-exclude = ["backend/venv", "backend/data", "frontend"]
+
+[lint]
+# pyflakes, pycodestyle errors, import sorting, bugbear, pyupgrade, bandit-style security checks
+select = ["F", "E", "W", "I", "B", "UP", "S"]
+ignore = [
+    "E501",   # long lines: formatting is not enforced
+    "B008",   # FastAPI's Depends()/Query() in defaults is the intended idiom
+    "S101",   # assert is fine in tests and the harness
+    "S311",   # random is used for non-security sampling (jitter, dataset shuffles)
+]
+
+[lint.per-file-ignores]
+"backend/tests/**" = ["S105", "S106", "S108"]   # fixed test passwords and /tmp paths
+"redteam/**" = ["S105", "S106"]                  # attack strings look like secrets
+
+[lint.isort]
+known-first-party = ["app", "security"]

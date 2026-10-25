@@ -19,7 +19,7 @@ _settings = get_settings()
 
 
 async def startup(ctx: dict) -> None:
-    configure_logging()
+    configure_logging(_settings.LOG_FORMAT, _settings.LOG_LEVEL)
     ctx["engine"] = create_db_engine(_settings)
     ctx["services"] = build_services(_settings, create_session_factory(ctx["engine"]), role="worker")
 

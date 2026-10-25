@@ -57,7 +57,7 @@ def test_upsert_and_search(store, embedder):
     doc_id = str(uuid.uuid4())
     texts = ["The sky is blue.", "Paris is the capital of France."]
     vectors = embedder.embed_chunks(texts)
-    chunks = [_make_chunk(doc_id, i, t, v, page=i + 1) for i, (t, v) in enumerate(zip(texts, vectors))]
+    chunks = [_make_chunk(doc_id, i, t, v, page=i + 1) for i, (t, v) in enumerate(zip(texts, vectors, strict=False))]
     store.upsert_chunks(SCOPE, chunks)
 
     query_vector = embedder.embed_query("What color is the sky?")

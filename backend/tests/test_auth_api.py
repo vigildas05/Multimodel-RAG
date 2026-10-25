@@ -1,14 +1,14 @@
 """Auth flows through the real API: cookies, refresh rotation and reuse detection,
 logout, CSRF, roles and deactivation."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
+from helpers import CSRF_HEADER, TEST_PASSWORD, fetch_csrf, login, set_cookie_headers, signup, unique_email
 from sqlalchemy import select, update
 
 from app.auth.cookies import ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE
 from app.db.models import RefreshToken, SecurityEvent, User
-from helpers import CSRF_HEADER, TEST_PASSWORD, fetch_csrf, login, set_cookie_headers, signup, unique_email
 
 
 def _events(session_factory, event_type: str) -> list[SecurityEvent]:
@@ -124,7 +124,7 @@ def test_protected_route_requires_session(client):
 
 def test_forged_access_token_rejected(client):
     user = signup(client)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     forged = jwt.encode(
         {
             "sub": user["user_id"],
@@ -203,7 +203,7 @@ def test_refresh_token_reuse_revokes_family(client, session_factory):
 def test_expired_refresh_token_rejected(client, session_factory):
     signup(client)
     with session_factory.begin() as session:
-        session.execute(update(RefreshToken).values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)))
+        session.execute(update(RefreshToken).values(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
     resp = client.post("/auth/refresh")
     assert resp.status_code == 401
     # The failed refresh clears the dead session cookies.

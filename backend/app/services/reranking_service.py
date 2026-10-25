@@ -45,7 +45,7 @@ class RerankingService:
         except Exception as exc:  # noqa: BLE001
             raise EmbeddingError("Reranking failed.", detail=str(exc)) from exc
 
-        for candidate, score in zip(candidates, scores):
+        for candidate, score in zip(candidates, scores, strict=False):
             candidate["rerank_score"] = float(score)
 
         ranked = sorted(candidates, key=lambda c: c["rerank_score"], reverse=True)

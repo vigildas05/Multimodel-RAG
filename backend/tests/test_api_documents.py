@@ -7,7 +7,6 @@ import uuid
 
 import fitz
 import pytest
-
 from helpers import signup
 
 

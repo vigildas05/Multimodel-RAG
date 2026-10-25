@@ -5,7 +5,7 @@ import * as api from '../../api/client'
 import DocumentListItem from '../documents/DocumentListItem'
 import UploadControl from '../documents/UploadControl'
 import ErrorBanner from '../common/ErrorBanner'
-import { useAppContext } from '../../context/AppContext'
+import { useAppContext } from '../../context/useAppContext'
 import { useAuth } from '../../context/useAuth'
 import { useDocuments } from '../../hooks/useDocuments'
 

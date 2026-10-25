@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.exceptions import InsufficientCreditsError
+from app.core.metrics import CREDITS_SPENT
 from app.db.models import CreditAccount, CreditLedger
 
 
@@ -104,7 +105,9 @@ class CreditService:
             )
             session.add(entry)
             session.flush()
-            return Charge(user_id, amount, reason, reference_type, reference_id, entry.id)
+            charge = Charge(user_id, amount, reason, reference_type, reference_id, entry.id)
+        CREDITS_SPENT.labels(reason).inc(amount)
+        return charge
 
     def refund(self, charge: Charge | None, reason: str = "refund") -> bool:
         """Give a charge back. Idempotent per charge: a second call does nothing."""

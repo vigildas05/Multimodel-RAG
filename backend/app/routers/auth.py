@@ -9,9 +9,9 @@ from app.auth.tokens import new_opaque_token
 from app.config import Settings
 from app.core.exceptions import AuthenticationError
 from app.core.rate_limit import RateLimiter, get_rate_limiter, limit_by_ip
-from app.services.demo_service import DemoService
 from app.dependencies import get_app_settings, get_demo_service
 from app.schemas.auth import CredentialsRequest, CsrfResponse, SessionResponse, UserOut
+from app.services.demo_service import DemoService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

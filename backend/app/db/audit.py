@@ -3,6 +3,7 @@ session so the record commits (or rolls back) together with the action it descri
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.metrics import SECURITY_EVENTS
 from app.db.models import AuditLog, SecurityEvent
 
 
@@ -49,6 +50,7 @@ def add_security_event(
     risk_score: float | None = None,
     details: dict | None = None,
 ) -> None:
+    SECURITY_EVENTS.labels(event_type, severity).inc()
     session.add(
         SecurityEvent(
             event_type=event_type,

@@ -14,6 +14,9 @@
 
 	header -Server
 
+	# Metrics are for a scraper on the private Docker network only, never the internet.
+	respond /metrics 404
+
 	reverse_proxy api:8000 {
 		health_uri /health
 		health_interval 30s

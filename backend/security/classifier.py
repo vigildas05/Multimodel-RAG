@@ -83,7 +83,7 @@ class HuggingFaceClassifier:
                 owners.append(i)
         outputs = self._get_pipeline()(windows, batch_size=8)
         scores = [0.0] * len(texts)
-        for owner, out in zip(owners, outputs):
+        for owner, out in zip(owners, outputs, strict=False):
             p = out["score"] if out["label"] == self._injection_label else 1.0 - out["score"]
             scores[owner] = max(scores[owner], p)
         return scores

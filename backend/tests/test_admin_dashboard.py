@@ -2,15 +2,15 @@
 red-team report reader cannot be pointed outside its directory."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from helpers import signup
 from sqlalchemy import update
 
 from app.db.audit import add_security_event
 from app.db.models import QueryLog, SecurityEvent, User
 from app.services.admin_service import AdminService
-from helpers import signup
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def test_non_admins_get_403(regular, path):
 
 
 def _seed_events(session_factory, user, other):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with session_factory.begin() as session:
         add_security_event(session, "input_blocked", "input_guard", severity="high", risk_score=0.93,
                            user_id=user["user_id"], workspace_id=user["workspace_id"], details={"question": "<b>x</b>"})
@@ -79,7 +79,7 @@ def test_security_events_filters(admin, regular, session_factory):
     assert types(event_type="auth_failure") == ["auth_failure"]
     assert types(workspace_id=other["workspace_id"]) == ["chunk_quarantined"]
     assert types(user_id=me["user_id"], severity="high") == ["input_blocked"]
-    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    since = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     assert "prompt_leak" not in types(since=since)
     assert types(until=since) == ["prompt_leak"]
 
@@ -205,7 +205,7 @@ def test_committed_report_is_readable(admin):
     assert body["name"] == "full" and body["dataset"]["attacks"] >= 300
 
 
-@pytest.mark.parametrize("name", ["../outside", "..\outside", "/etc/passwd", "full.json", "Bad Name"])
+@pytest.mark.parametrize("name", ["../outside", r"..\outside", "/etc/passwd", "full.json", "Bad Name"])
 def test_report_reader_confines_names_itself(session_factory, reports_dir, name):
     # Defense in depth: the service refuses bad names even without the route's validation.
     assert AdminService(session_factory, reports_dir).redteam_report(name) is None

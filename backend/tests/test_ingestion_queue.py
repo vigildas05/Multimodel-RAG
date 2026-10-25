@@ -8,14 +8,14 @@ import pytest
 import redis
 from arq.connections import RedisSettings
 from arq.worker import Worker, func
+from helpers import make_pdf, signup
 
 import app.ingestion.jobs as jobs
 from app.config import get_settings
+from app.core.tenancy import TenantScope
 from app.ingestion.jobs import INGEST_JOB_NAME, process_document
 from app.services.container import Lazy
 from app.storage.upload_store import UploadStore
-from app.core.tenancy import TenantScope
-from helpers import make_pdf, signup
 
 TEST_REDIS_URL = "redis://localhost:6379/15"
 

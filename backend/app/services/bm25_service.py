@@ -63,7 +63,7 @@ class BM25Service:
         # position, not score magnitude. BM25 idf can legitimately collapse to exactly 0
         # for terms appearing in exactly half a small corpus, which would otherwise wrongly
         # drop a chunk that's still the best (or only) keyword match.
-        ranked = sorted(zip(index.payloads, scores), key=lambda pair: pair[1], reverse=True)
+        ranked = sorted(zip(index.payloads, scores, strict=False), key=lambda pair: pair[1], reverse=True)
         return [{"score": float(score), **payload} for payload, score in ranked[:top_k]]
 
     def invalidate(self, workspace_id: str) -> None:

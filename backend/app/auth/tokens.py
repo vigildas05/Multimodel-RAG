@@ -4,7 +4,7 @@ import hashlib
 import logging
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 
@@ -38,7 +38,7 @@ def resolve_jwt_secret(settings: Settings) -> str:
 
 
 def create_access_token(user_id: str, workspace_id: str, secret: str, issuer: str, ttl: timedelta) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "wid": workspace_id,

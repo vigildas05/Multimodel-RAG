@@ -151,6 +151,11 @@ $C restart worker
 - **Secrets.** Only in `deploy/.env.prod` (mode 600, never committed). Rotating `JWT_SECRET_KEY`
   signs everyone out.
 - **Demo cleanup** runs every 15 minutes in the worker.
+- **Logs** are JSON (`LOG_FORMAT=json`), one object per line with a `request_id` you can match
+  to the `X-Request-ID` response header: `$C logs api | jq 'select(.level=="ERROR")'`.
+- **Metrics.** Set `METRICS_TOKEN` to enable `/metrics`. Caddy refuses it publicly; run a
+  Prometheus container on the same compose network scraping `http://api:8000/metrics` with
+  `authorization: { credentials: <token> }`.
 - **Admin dashboard** at `https://app.<domain>/admin` (admins only). The red-team tab reads
   the reports committed in `redteam/reports/`, mounted read-only into the API container;
   after re-running the eval, commit the new report and `git pull` on the VM.

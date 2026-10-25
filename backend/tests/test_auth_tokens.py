@@ -2,7 +2,7 @@
 
 import base64
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -21,7 +21,7 @@ def _b64(data: dict) -> str:
 
 
 def _claims(**overrides) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claims = {
         "sub": "user-1",
         "wid": "ws-1",
@@ -54,7 +54,7 @@ def test_rejects_alg_none():
 
 
 def test_rejects_expired_token():
-    past = datetime.now(timezone.utc) - timedelta(hours=1)
+    past = datetime.now(UTC) - timedelta(hours=1)
     token = jwt.encode(_claims(iat=past, exp=past + timedelta(minutes=1)), SECRET, algorithm="HS256")
     with pytest.raises(AuthenticationError):
         decode_access_token(token, SECRET, ISSUER)

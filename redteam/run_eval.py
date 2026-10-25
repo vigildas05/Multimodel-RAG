@@ -16,13 +16,14 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import harness  # noqa: E402
+
 from security.classifier import HuggingFaceClassifier, NullClassifier  # noqa: E402
 from security.config import GatewayConfig  # noqa: E402
 from security.gateway import SecurityGateway  # noqa: E402
@@ -37,9 +38,8 @@ def load_jsonl(path: Path) -> list[dict]:
 
 def classifier_available() -> bool:
     try:
-        from huggingface_hub import try_to_load_from_cache
-
         import transformers  # noqa: F401
+        from huggingface_hub import try_to_load_from_cache
 
         return isinstance(try_to_load_from_cache(MODEL, "config.json"), str)
     except Exception:  # noqa: BLE001
@@ -81,7 +81,8 @@ def sample(records: list[dict], limit: int | None) -> list[dict]:
 
 def git_commit() -> str | None:
     try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=HERE).stdout.strip() or None
+        argv = ["git", "rev-parse", "--short", "HEAD"]  # fixed argv, no shell
+        return subprocess.run(argv, capture_output=True, text=True, cwd=HERE).stdout.strip() or None  # noqa: S603, S607
     except OSError:
         return None
 
@@ -233,7 +234,7 @@ def main(argv=None) -> int:
     benign_results = [harness.evaluate_benign(r, gateway) for r in benign]
 
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "commit": git_commit(),
         "config": {
             "llm": llm_name,
