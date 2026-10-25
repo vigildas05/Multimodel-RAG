@@ -82,6 +82,11 @@ class InputBlockedError(AppError):
     error_type = "input_blocked"
 
 
+class ResponseBlockedError(AppError):
+    status_code = 422
+    error_type = "response_blocked"
+
+
 class QuotaExceededError(AppError):
     status_code = 429
     error_type = "quota_exceeded"

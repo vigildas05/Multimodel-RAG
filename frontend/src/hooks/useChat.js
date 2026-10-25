@@ -29,6 +29,7 @@ export function useChat() {
               content: response.answer,
               sources: response.sources,
               retrieval: response.retrieval,
+              security: response.security,
             },
           },
         })

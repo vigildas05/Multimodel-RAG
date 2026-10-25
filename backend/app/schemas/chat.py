@@ -32,7 +32,17 @@ class RetrievalInfo(BaseModel):
     bm25_candidate_count: int
 
 
+class SecurityNotes(BaseModel):
+    """What the security gateway changed or noticed, so the UI can be transparent about it."""
+
+    input_flagged: bool = False
+    pii_redactions: dict[str, int] = {}
+    removed_citations: list[int] = []
+    removed_images: int = 0
+
+
 class ChatResponse(BaseModel):
     answer: str
     sources: list[SourceCitation]
     retrieval: RetrievalInfo
+    security: SecurityNotes = SecurityNotes()

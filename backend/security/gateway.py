@@ -8,6 +8,8 @@ from security.classifier import InjectionClassifier, NullClassifier
 from security.config import GatewayConfig
 from security.heuristics import HeuristicScanner, combine_weights
 from security.normalize import normalize
+from security.output import OutputResult, scan_output
+from security.prompt import PromptBundle, SourceBlock, build_plain_prompt, build_prompt
 from security.types import Decision, ScanResult
 
 
@@ -66,3 +68,17 @@ class SecurityGateway:
                 )
             )
         return results
+
+    # --- prompt & output ---------------------------------------------------------------
+
+    def build_prompt(self, question: str, sources: list[SourceBlock]) -> PromptBundle:
+        """Layer 3: spotlighted prompt with instruction hierarchy and a fresh canary."""
+        if not self.config.enabled:
+            return build_plain_prompt(question, sources)
+        return build_prompt(question, sources)
+
+    def scan_output(self, text: str, bundle: PromptBundle) -> OutputResult:
+        """Layer 4: block prompt leaks, strip images and bad citations, redact PII."""
+        if not self.config.enabled:
+            return OutputResult(text=text)
+        return scan_output(text, bundle, pii_redaction=self.config.pii_redaction)

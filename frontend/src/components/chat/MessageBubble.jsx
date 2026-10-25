@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, User } from 'lucide-react'
+import { AlertTriangle, Bot, ShieldCheck, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import LoadingSpinner from '../common/LoadingSpinner'
 import { withCitations } from './CitationBadge'
@@ -11,6 +11,14 @@ export default function MessageBubble({ message }) {
   const citationComponents = {
     p: ({ children }) => <p className="mb-2 last:mb-0">{withCitations(children, sourceCount)}</p>,
     li: ({ children }) => <li>{withCitations(children, sourceCount)}</li>,
+    // Never fetch images from model output: an injected image URL is a zero-click way to
+    // send data to an attacker's server. (The server strips them too.)
+    img: () => null,
+    a: ({ href, children }) => (
+      <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-emerald-400 underline">
+        {children}
+      </a>
+    ),
   }
 
   return (
@@ -41,11 +49,14 @@ export default function MessageBubble({ message }) {
             <span>{message.content}</span>
           ) : (
             <div className="prose-sm prose-invert max-w-none [&_p]:m-0">
-              <ReactMarkdown components={citationComponents}>{message.content}</ReactMarkdown>
+              <ReactMarkdown components={citationComponents} skipHtml>
+                {message.content}
+              </ReactMarkdown>
             </div>
           )}
         </div>
 
+        {!isUser && !message.loading && !message.error && <SecurityNotes security={message.security} />}
         {!isUser && !message.loading && !message.error && (
           <SourcesPanel sources={message.sources} retrieval={message.retrieval} />
         )}
@@ -56,6 +67,28 @@ export default function MessageBubble({ message }) {
           <User size={15} />
         </div>
       )}
+    </div>
+  )
+}
+
+const PII_LABELS = { email: 'email address', phone: 'phone number', aadhaar: 'Aadhaar number', pan: 'PAN', card: 'card number' }
+
+function SecurityNotes({ security }) {
+  if (!security) return null
+  const notes = []
+  for (const [kind, count] of Object.entries(security.pii_redactions || {})) {
+    notes.push(`${count} ${PII_LABELS[kind] || kind}${count === 1 ? '' : 's'} redacted`)
+  }
+  if (security.removed_citations?.length) {
+    notes.push(`citation ${security.removed_citations.map((n) => `[${n}]`).join(', ')} removed (no such source)`)
+  }
+  if (security.removed_images) notes.push(`${security.removed_images} image${security.removed_images === 1 ? '' : 's'} removed`)
+  if (security.input_flagged) notes.push('question flagged for review')
+  if (!notes.length) return null
+  return (
+    <div className="mt-1 flex items-start gap-1 text-[11px] text-slate-500">
+      <ShieldCheck size={12} className="mt-px shrink-0 text-emerald-500/70" />
+      <span>Security filter: {notes.join(' · ')}</span>
     </div>
   )
 }
