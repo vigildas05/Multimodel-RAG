@@ -9,7 +9,7 @@ const client = axios.create({ baseURL: API_BASE_URL, withCredentials: true })
 const CSRF_HEADER = 'X-CSRF-Token'
 const SAFE_METHODS = new Set(['get', 'head', 'options'])
 // Auth endpoints whose 401s mean "wrong credentials / no session", not "access token expired".
-const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout', '/auth/csrf']
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout', '/auth/csrf', '/auth/demo']
 
 // --- CSRF token (held in memory only) -----------------------------------------------
 
@@ -123,6 +123,12 @@ export function register(email, password) {
   return startSession('/auth/register', email, password)
 }
 
+export async function startDemo() {
+  const { data } = await client.post('/auth/demo')
+  csrfToken = data.csrf_token
+  return data.user
+}
+
 export async function logout() {
   try {
     await client.post('/auth/logout')
@@ -133,6 +139,11 @@ export async function logout() {
 
 export async function getCurrentUser() {
   const { data } = await client.get('/auth/me')
+  return data
+}
+
+export async function getUsage() {
+  const { data } = await client.get('/usage/me')
   return data
 }
 

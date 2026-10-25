@@ -25,6 +25,20 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = True
     COOKIE_SAMESITE: str = "lax"
 
+    # --- Quotas ---
+    # Queries (chat + search) per user per UTC day. Replaced by credits in Phase 3.
+    DAILY_QUERY_LIMIT: int = 200
+
+    # --- Demo ---
+    # "Try the demo" gives each visitor a private, short-lived copy of the sample workspace.
+    DEMO_ENABLED: bool = True
+    DEMO_TTL_HOURS: int = 24
+    DEMO_DAILY_QUERY_LIMIT: int = 20
+    DEMO_MAX_DOCUMENTS: int = 6
+    # Abuse limits on creating demo workspaces (each one copies the sample vectors).
+    DEMO_MAX_ACTIVE_WORKSPACES: int = 200
+    DEMO_MAX_STARTS_PER_IP_PER_HOUR: int = 5
+
     # --- Database ---
     # SQLAlchemy URL; psycopg 3 driver. For Neon, append ?sslmode=require.
     DATABASE_URL: str = "postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel"

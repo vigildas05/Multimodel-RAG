@@ -11,12 +11,13 @@ Conventions:
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -157,6 +158,19 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class UsageQuota(Base):
+    """Per-user, per-UTC-day query counter. Incremented atomically with a conditional
+    upsert, so concurrent requests can't exceed the limit (see app.services.quota_service)."""
+
+    __tablename__ = "usage_quota"
+
+    user_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    queries: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class SecurityEvent(Base):

@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import AuthForm, { AuthLink } from '../components/auth/AuthForm'
+import TryDemoButton from '../components/auth/TryDemoButton'
 import { useAuth } from '../context/useAuth'
 
 export default function LoginPage() {
@@ -21,6 +22,7 @@ export default function LoginPage() {
       submitLabel="Sign in"
       passwordAutoComplete="current-password"
       onSubmit={handleSubmit}
+      belowForm={<TryDemoButton />}
       validate={({ email, password }) => (!email.trim() || !password ? 'Enter your email and password.' : null)}
       footer={
         <>

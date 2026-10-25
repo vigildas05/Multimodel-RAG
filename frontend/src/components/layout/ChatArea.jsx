@@ -1,4 +1,5 @@
 import ChatInput from '../chat/ChatInput'
+import UsageBanner from '../demo/UsageBanner'
 import MessageList from '../chat/MessageList'
 import { useChat } from '../../hooks/useChat'
 
@@ -7,6 +8,7 @@ export default function ChatArea() {
 
   return (
     <main className="flex h-full flex-1 flex-col">
+      <UsageBanner />
       <div className="flex-1 overflow-y-auto">
         <MessageList messages={messages} />
       </div>

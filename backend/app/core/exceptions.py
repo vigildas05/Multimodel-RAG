@@ -70,6 +70,16 @@ class EmailAlreadyRegisteredError(AppError):
     error_type = "email_taken"
 
 
+class QuotaExceededError(AppError):
+    status_code = 429
+    error_type = "quota_exceeded"
+
+
+class DemoUnavailableError(AppError):
+    status_code = 503
+    error_type = "demo_unavailable"
+
+
 class DatabaseUnavailableError(AppError):
     status_code = 503
     error_type = "database_unavailable"

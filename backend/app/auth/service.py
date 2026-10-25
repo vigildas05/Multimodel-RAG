@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -37,6 +37,8 @@ class AuthenticatedUser:
     role: str
     workspace_id: str
     is_demo: bool
+    # Set for ephemeral demo workspaces; the session stops working once it passes.
+    workspace_expires_at: datetime | None = None
 
     @property
     def scope(self) -> TenantScope:
@@ -69,6 +71,11 @@ def _email_fingerprint(email: str) -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _workspace_is_active():
+    """Expired demo workspaces are dead immediately, even before cleanup deletes them."""
+    return or_(Workspace.expires_at.is_(None), Workspace.expires_at > func.now())
 
 
 class AuthService:
@@ -104,7 +111,7 @@ class AuthService:
                     target_id=user.id,
                     ip_address=client.ip_address,
                 )
-                return self._issue_session(session, user, workspace.id, client)
+                return self.issue_session(session, user, workspace, client)
         except IntegrityError as exc:
             # Lost a race with a concurrent registration of the same email.
             raise EmailAlreadyRegisteredError("An account with this email already exists.") from exc
@@ -114,9 +121,9 @@ class AuthService:
         with self._session_factory.begin() as session:
             user = session.scalar(select(User).where(User.email == email))
             password_ok = verify_password(user.password_hash if user else None, password)
-            workspace_id = self._primary_workspace_id(session, user.id) if user else None
+            workspace = self._active_workspace(session, user.id) if user else None
 
-            if not password_ok or not user.is_active or workspace_id is None:
+            if not password_ok or not user.is_active or workspace is None:
                 reason = "bad_credentials" if not password_ok else "inactive_or_no_workspace"
                 add_security_event(
                     session,
@@ -136,10 +143,10 @@ class AuthService:
                     session,
                     "user.login",
                     actor_user_id=user.id,
-                    workspace_id=workspace_id,
+                    workspace_id=workspace.id,
                     ip_address=client.ip_address,
                 )
-                issued = self._issue_session(session, user, workspace_id, client)
+                issued = self.issue_session(session, user, workspace, client)
 
         # Raised after the transaction so the auth_failure event is committed, not rolled back.
         if failed:
@@ -175,9 +182,9 @@ class AuthService:
                     logger.warning("Refresh token reuse detected; revoked family %s", token.family_id)
             elif token.expires_at > _now():
                 user = session.get(User, token.user_id)
-                workspace_id = self._primary_workspace_id(session, user.id) if user else None
-                if user is not None and user.is_active and workspace_id is not None:
-                    issued = self._issue_session(session, user, workspace_id, client, family_id=token.family_id)
+                workspace = self._active_workspace(session, user.id) if user else None
+                if user is not None and user.is_active and workspace is not None:
+                    issued = self.issue_session(session, user, workspace, client, family_id=token.family_id)
                     token.revoked_at = _now()
                     token.replaced_by_id = issued.refresh_token_id
 
@@ -203,26 +210,28 @@ class AuthService:
         so deactivation and role changes take effect immediately rather than at token expiry."""
         claims = decode_access_token(access_token, self._jwt_secret, self._settings.JWT_ISSUER)
         with self._session_factory() as session:
-            user = session.scalar(
-                select(User)
+            row = session.execute(
+                select(User, Workspace)
                 .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+                .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
                 .where(
                     User.id == claims.user_id,
                     User.is_active.is_(True),
-                    WorkspaceMember.workspace_id == claims.workspace_id,
+                    Workspace.id == claims.workspace_id,
+                    _workspace_is_active(),
                 )
-            )
-            if user is None:
+            ).first()
+            if row is None:
                 raise AuthenticationError("Your session is invalid or has expired.")
-            return self._to_authenticated(user, claims.workspace_id)
+            return self._to_authenticated(*row)
 
     # --- internals ------------------------------------------------------------------
 
-    def _issue_session(
+    def issue_session(
         self,
         session: Session,
         user: User,
-        workspace_id: str,
+        workspace: Workspace,
         client: ClientInfo,
         family_id: str | None = None,
     ) -> IssuedSession:
@@ -242,13 +251,13 @@ class AuthService:
         session.flush()
         access = create_access_token(
             user.id,
-            workspace_id,
+            workspace.id,
             self._jwt_secret,
             self._settings.JWT_ISSUER,
             timedelta(minutes=self._settings.ACCESS_TOKEN_TTL_MINUTES),
         )
         return IssuedSession(
-            user=self._to_authenticated(user, workspace_id),
+            user=self._to_authenticated(user, workspace),
             access_token=access,
             refresh_token=raw_refresh,
             refresh_token_id=refresh_token_id,
@@ -265,20 +274,22 @@ class AuthService:
         )
 
     @staticmethod
-    def _primary_workspace_id(session: Session, user_id: str) -> str | None:
+    def _active_workspace(session: Session, user_id: str) -> Workspace | None:
         return session.scalar(
-            select(WorkspaceMember.workspace_id)
-            .where(WorkspaceMember.user_id == user_id, WorkspaceMember.role == "owner")
+            select(Workspace)
+            .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+            .where(WorkspaceMember.user_id == user_id, WorkspaceMember.role == "owner", _workspace_is_active())
             .order_by(WorkspaceMember.created_at)
             .limit(1)
         )
 
     @staticmethod
-    def _to_authenticated(user: User, workspace_id: str) -> AuthenticatedUser:
+    def _to_authenticated(user: User, workspace: Workspace) -> AuthenticatedUser:
         return AuthenticatedUser(
             user_id=user.id,
             email=user.email,
             role=user.role,
-            workspace_id=workspace_id,
+            workspace_id=workspace.id,
             is_demo=user.is_demo,
+            workspace_expires_at=workspace.expires_at,
         )

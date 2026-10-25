@@ -34,7 +34,8 @@ PROTECTED = [(m, p, r) for m, p, r in _api_routes() if (m, p) not in ALWAYS_PUBL
 
 
 def test_public_allow_list_is_small():
-    assert len(ALWAYS_PUBLIC) <= 6
+    # csrf, register, login, refresh, logout, demo, health. Growing this needs a real reason.
+    assert len(ALWAYS_PUBLIC) <= 7
 
 
 @pytest.mark.parametrize("method,path,route", PROTECTED, ids=[f"{m} {p}" for m, p, _ in PROTECTED])

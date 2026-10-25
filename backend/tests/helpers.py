@@ -35,6 +35,14 @@ def login(client: TestClient, email: str, password: str = TEST_PASSWORD):
     return resp
 
 
+def start_demo(client: TestClient):
+    fetch_csrf(client)
+    resp = client.post("/auth/demo")
+    if resp.status_code == 201:
+        client.headers[CSRF_HEADER] = resp.json()["csrf_token"]
+    return resp
+
+
 def make_pdf(text: str) -> bytes:
     doc = fitz.open()
     page = doc.new_page()

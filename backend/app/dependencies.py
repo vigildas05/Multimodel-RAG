@@ -4,15 +4,18 @@ fetch them from the current request, so nothing is ever re-instantiated per requ
 """
 
 from fastapi import Depends, Request
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
 from app.config import Settings, get_settings
 from app.services.bm25_service import BM25Service
+from app.services.demo_service import DemoService
 from app.services.document_service import DocumentService
 from app.services.embedding_service import EmbeddingService
 from app.services.llm.base import LLMProvider
 from app.services.ocr_service import OCRService
+from app.services.quota_service import QuotaService, QuotaTicket
 from app.services.reranking_service import RerankingService
 from app.services.retrieval_service import RetrievalService
 from app.services.vector_store_service import VectorStoreService
@@ -63,3 +66,25 @@ def get_retrieval_service(request: Request) -> RetrievalService:
 
 def get_document_service(request: Request) -> DocumentService:
     return request.app.state.document_service
+
+
+def get_quota_service(request: Request) -> QuotaService:
+    return request.app.state.quota_service
+
+
+def get_demo_service(request: Request) -> DemoService:
+    return request.app.state.demo_service
+
+
+async def consume_query_quota(
+    user: AuthenticatedUser = Depends(get_current_user),
+    quota: QuotaService = Depends(get_quota_service),
+):
+    """Charge one query up front (atomically); refund it if the request then fails, so
+    errors like "no relevant results" or an LLM outage don't eat into the quota."""
+    ticket: QuotaTicket = await run_in_threadpool(quota.consume, user)
+    try:
+        yield ticket
+    except Exception:
+        await run_in_threadpool(quota.refund, user.user_id, ticket.day)
+        raise

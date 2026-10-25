@@ -14,7 +14,17 @@ const inputClass =
  * `validate(fields)` may return an error string to block submission client-side
  * (convenience only: the server enforces the real policy).
  */
-export default function AuthForm({ title, subtitle, submitLabel, passwordAutoComplete, onSubmit, validate, footer, extraFields }) {
+export default function AuthForm({
+  title,
+  subtitle,
+  submitLabel,
+  passwordAutoComplete,
+  onSubmit,
+  validate,
+  footer,
+  extraFields,
+  belowForm,
+}) {
   const [fields, setFields] = useState({ email: '', password: '', confirm: '' })
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -94,6 +104,7 @@ export default function AuthForm({ title, subtitle, submitLabel, passwordAutoCom
           </button>
         </form>
 
+        {belowForm}
         <p className="mt-4 text-center text-sm text-slate-500">{footer}</p>
       </div>
     </div>

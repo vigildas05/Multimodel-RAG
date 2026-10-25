@@ -7,9 +7,8 @@ from starlette.concurrency import run_in_threadpool
 from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
 from app.config import Settings
-from app.core.exceptions import DocumentNotFoundError
+from app.core.exceptions import DocumentNotFoundError, QuotaExceededError
 from app.core.file_validation import (
-    build_stored_path,
     classify_file_type,
     new_document_id,
     sanitize_filename,
@@ -57,6 +56,8 @@ async def upload_document(
     registry: DocumentRegistry = Depends(get_registry),
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentUploadResponse:
+    if user.is_demo and await run_in_threadpool(registry.count) >= settings.DEMO_MAX_DOCUMENTS:
+        raise QuotaExceededError(f"Demo workspaces are limited to {settings.DEMO_MAX_DOCUMENTS} documents.")
     ext = validate_extension(file.filename, settings)
     file_bytes = await file.read()
     validate_size(len(file_bytes), settings)
@@ -74,21 +75,9 @@ async def upload_document(
     )
     registry.create(record)
 
-    try:
-        if file_type == "pdf":
-            updated = await document_service.ingest_pdf(user.scope, document_id, safe_name, file_bytes, force_ocr=force_ocr)
-        elif file_type == "image":
-            updated = await document_service.ingest_image(user.scope, document_id, safe_name, file_bytes)
-        elif file_type == "audio":
-            stored_path = build_stored_path(settings.upload_dir_path, document_id, safe_name)
-            stored_path.write_bytes(file_bytes)
-            updated = await document_service.ingest_audio(user.scope, document_id, safe_name, str(stored_path))
-        else:
-            raise ValueError(f"Unhandled file type: {file_type}")
-    except Exception as exc:  # noqa: BLE001
-        registry.update_status(document_id, "failed", error_message=str(exc))
-        raise
-
+    updated = await document_service.ingest_file(
+        user.scope, document_id, safe_name, file_type, file_bytes, settings.upload_dir_path, force_ocr=force_ocr
+    )
     return DocumentUploadResponse(document=_to_schema(updated))
 
 

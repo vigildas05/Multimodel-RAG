@@ -3,7 +3,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
-from app.dependencies import get_registry, get_retrieval_service
+from app.dependencies import consume_query_quota, get_registry, get_retrieval_service
 from app.routers.retrieval_scope import build_retrieval_settings
 from app.schemas.search import RetrievedChunk, SearchRequest, SearchResponse
 from app.services.retrieval_service import RetrievalService
@@ -12,7 +12,7 @@ from app.storage.document_registry import DocumentRegistry
 router = APIRouter(tags=["search"], dependencies=[Depends(get_current_user)])
 
 
-@router.post("/search", response_model=SearchResponse)
+@router.post("/search", response_model=SearchResponse, dependencies=[Depends(consume_query_quota)])
 async def search(
     request: SearchRequest,
     user: AuthenticatedUser = Depends(get_current_user),

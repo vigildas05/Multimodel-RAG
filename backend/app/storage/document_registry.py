@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import Document
@@ -84,6 +84,12 @@ class DocumentRegistry:
                 .order_by(Document.created_at.desc())
             )
             return [self._to_record(row) for row in rows]
+
+    def count(self) -> int:
+        with self._session_factory() as session:
+            return session.scalar(
+                select(func.count()).select_from(Document).where(Document.workspace_id == self._workspace_id)
+            )
 
     def owned_ids(self, document_ids: list[str]) -> set[str]:
         """The subset of `document_ids` that exist in this workspace."""

@@ -8,7 +8,8 @@ from app.auth.service import AuthenticatedUser, AuthService, ClientInfo, IssuedS
 from app.auth.tokens import new_opaque_token
 from app.config import Settings
 from app.core.exceptions import AuthenticationError
-from app.dependencies import get_app_settings
+from app.services.demo_service import DemoService
+from app.dependencies import get_app_settings, get_demo_service
 from app.schemas.auth import CredentialsRequest, CsrfResponse, SessionResponse, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -21,6 +22,7 @@ PUBLIC_ROUTES = {
     ("POST", "/auth/login"),
     ("POST", "/auth/refresh"),
     ("POST", "/auth/logout"),
+    ("POST", "/auth/demo"),
 }
 
 
@@ -74,6 +76,18 @@ async def login(
     client: ClientInfo = Depends(get_client_info),
 ) -> SessionResponse:
     issued = await run_in_threadpool(auth_service.login, body.email, body.password, client)
+    return _session_response(response, settings, issued)
+
+
+@router.post("/demo", response_model=SessionResponse, status_code=201)
+async def start_demo(
+    response: Response,
+    settings: Settings = Depends(get_app_settings),
+    demo_service: DemoService = Depends(get_demo_service),
+    client: ClientInfo = Depends(get_client_info),
+) -> SessionResponse:
+    """Create a private, expiring guest workspace seeded with the sample documents."""
+    issued = await run_in_threadpool(demo_service.start, client)
     return _session_response(response, settings, issued)
 
 

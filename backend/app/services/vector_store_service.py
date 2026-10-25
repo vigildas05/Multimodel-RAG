@@ -119,6 +119,45 @@ class VectorStoreService:
         except Exception as exc:  # noqa: BLE001
             raise VectorStoreUnavailableError("Failed to store chunks in Qdrant.", detail=str(exc)) from exc
 
+    def clone_documents(self, scope: TenantScope, target: TenantScope, document_id_map: dict[str, str]) -> int:
+        """Copy `scope`'s chunks for the documents in `document_id_map` into `target`,
+        re-stamped with the target workspace and the new document IDs. Vectors are copied,
+        not recomputed (used to seed demo workspaces from the template). Returns the count."""
+        if not document_id_map:
+            return 0
+        source_filter = self._scoped_filter(
+            scope, FieldCondition(key="document_id", match=MatchAny(any=list(document_id_map)))
+        )
+        copied, offset = 0, None
+        try:
+            while True:
+                points, offset = self._client.scroll(
+                    collection_name=self._collection_name,
+                    scroll_filter=source_filter,
+                    limit=256,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=True,
+                )
+                clones = []
+                for point in points:
+                    new_document_id = document_id_map[point.payload["document_id"]]
+                    payload = {
+                        **point.payload,
+                        WORKSPACE_FIELD: target.workspace_id,
+                        "document_id": new_document_id,
+                        "chunk_id": f"{new_document_id}_{point.payload['chunk_index']}",
+                    }
+                    clones.append(PointStruct(id=str(uuid.uuid4()), vector=point.vector, payload=payload))
+                if clones:
+                    self._client.upsert(collection_name=self._collection_name, points=clones)
+                    copied += len(clones)
+                if offset is None:
+                    break
+        except Exception as exc:  # noqa: BLE001
+            raise VectorStoreUnavailableError("Failed to copy chunks in Qdrant.", detail=str(exc)) from exc
+        return copied
+
     def search(
         self,
         scope: TenantScope,

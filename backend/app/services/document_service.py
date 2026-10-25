@@ -6,12 +6,14 @@ BM25 indexes know to rebuild.
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from starlette.concurrency import run_in_threadpool
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.exceptions import EmptyDocumentError
+from app.core.file_validation import build_stored_path
 from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 from app.models.document import DocumentRecord
@@ -62,6 +64,31 @@ class DocumentService:
 
     def get_chunks(self, scope: TenantScope, document_id: str) -> list[dict]:
         return self._vector_store.get_chunks_by_document(scope, document_id)
+
+    async def ingest_file(
+        self,
+        scope: TenantScope,
+        document_id: str,
+        filename: str,
+        file_type: str,
+        file_bytes: bytes,
+        upload_dir: Path,
+        force_ocr: bool = False,
+    ) -> DocumentRecord:
+        """Dispatch to the right modality; marks the document failed if ingestion raises."""
+        try:
+            if file_type == "pdf":
+                return await self.ingest_pdf(scope, document_id, filename, file_bytes, force_ocr=force_ocr)
+            if file_type == "image":
+                return await self.ingest_image(scope, document_id, filename, file_bytes)
+            if file_type == "audio":
+                stored_path = build_stored_path(upload_dir, document_id, filename)
+                stored_path.write_bytes(file_bytes)
+                return await self.ingest_audio(scope, document_id, filename, str(stored_path))
+            raise ValueError(f"Unhandled file type: {file_type}")
+        except Exception as exc:  # noqa: BLE001
+            await run_in_threadpool(self._registry(scope).update_status, document_id, "failed", None, str(exc))
+            raise
 
     async def ingest_pdf(
         self,

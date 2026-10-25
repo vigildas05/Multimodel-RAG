@@ -6,7 +6,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
 from app.config import Settings
-from app.dependencies import get_app_settings, get_llm_provider, get_registry, get_retrieval_service
+from app.dependencies import consume_query_quota, get_app_settings, get_llm_provider, get_registry, get_retrieval_service
 from app.routers.retrieval_scope import build_retrieval_settings
 from app.schemas.chat import ChatRequest, ChatResponse, RetrievalInfo, SourceCitation
 from app.services.llm.base import LLMProvider
@@ -18,7 +18,7 @@ logger = logging.getLogger("app.routers.chat")
 router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user)])
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse, dependencies=[Depends(consume_query_quota)])
 async def chat(
     request: ChatRequest,
     user: AuthenticatedUser = Depends(get_current_user),
