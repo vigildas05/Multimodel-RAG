@@ -1,33 +1,119 @@
-# Multimodal RAG Research Assistant
+# Sentinel RAG
 
-A full-stack Retrieval-Augmented Generation (RAG) system. Upload PDFs, images, and audio,
-then ask natural-language questions and get answers grounded in your own documents with
-source citations (page numbers, audio timestamps, or chunk IDs).
+A secure, multi-tenant Retrieval-Augmented Generation (RAG) research assistant. Upload PDFs,
+images and audio, ask questions, and get answers grounded in your own documents with
+citations (page numbers, audio timestamps), behind a defence-in-depth **LLM security
+gateway** against prompt injection.
 
-Real retrieval, embedding, reranking, and generation pipeline — dense + BM25 hybrid
-search, cross-encoder reranking, OCR for scanned documents, Whisper for audio, and a
-swappable local/hosted LLM backend.
+The retrieval pipeline is real: dense + BM25 hybrid search, cross-encoder reranking, OCR for
+scanned documents, Whisper for audio, and a swappable local/hosted LLM backend.
 
 ## Features
 
-- **Multimodal ingestion** — PDFs (native text or OCR fallback for scanned pages),
-  images (OCR + vision captioning), and audio (Whisper transcription with timestamps)
-- **Hybrid retrieval** — dense vector search (Qdrant) + BM25 keyword search, combined via
-  Reciprocal Rank Fusion, toggleable independently
-- **Reranking** — optional cross-encoder reranking stage (BAAI/bge-reranker-base) for
-  higher-precision results
-- **Grounded generation** — answers cite sources by document/page/timestamp, abstain when
-  context is insufficient, and never fabricate page numbers
-- **Configurable pipeline** — chunk size/overlap, retrieval top-k, final context chunk
-  count, similarity threshold, temperature, top-p, and max tokens are all adjustable from
-  the UI's Advanced Retrieval Settings panel
-- **Swappable LLM provider** — defaults to local Ollama (free, no API key); swapping to
-  another provider (Groq, OpenAI, Anthropic, ...) is a config change + one new provider
-  class, no other code changes
-- **Structured error handling** — invalid file types, empty documents, OCR/transcription
-  failures, missing API keys, no retrieval results, etc. all return clear structured errors
-- **Evaluation harness** — a real retrieval-quality eval script (Recall@K, Precision@K,
-  MRR) against a live Qdrant instance
+**RAG**
+- **Multimodal ingestion**: PDFs (native text or OCR fallback), images (OCR + vision
+  captioning) and audio (Whisper transcription with timestamps)
+- **Hybrid retrieval**: Qdrant dense search + BM25, fused with Reciprocal Rank Fusion, then
+  optional cross-encoder reranking (BAAI/bge-reranker-base)
+- **Grounded, cited answers**: abstains when the documents don't contain the answer
+- **Configurable pipeline**: top-k, context size, chunking, threshold, temperature, etc.
+  from the UI
+
+**SaaS & isolation**
+- **Accounts**: argon2id passwords, short-lived JWT access tokens and rotating refresh tokens
+  (reuse detection) in httpOnly cookies, CSRF protection, user/admin roles
+- **Isolated workspaces**: every Qdrant query is filtered by workspace in one choke point,
+  BM25 indexes are per workspace, with a dedicated tenant-isolation test suite
+- **Try-the-demo**: per-visitor, 24-hour copies of a sample workspace, with daily quotas
+- **Background processing**: uploads are processed by an arq worker; the API never parses
+  files or loads OCR/Whisper
+
+**Security** (see [Security architecture](#security-architecture))
+- Upload hardening: magic-byte type detection, size/page/pixel/duration limits, sandboxed
+  parsing with hard timeouts, hidden-PDF-text stripping
+- LLM security gateway: input guard (heuristics + ML classifier), ingest guard
+  (quarantine), spotlighted prompts with a canary, output guard (leak blocking, PII
+  redaction, citation checks, image stripping)
+- Every security decision is recorded as a security event
+
+## Security architecture
+
+```mermaid
+flowchart LR
+    U[User question] --> IG{Input guard<br/>heuristics + classifier}
+    IG -- block --> X1[400 input_blocked]
+    IG -- allow / flag --> R[Tenant-scoped retrieval<br/>dense + BM25 + rerank]
+    D[Uploaded file] --> V{Magic bytes<br/>size & count limits}
+    V -- reject --> X2[422 / 413]
+    V --> Q[(Redis queue)] --> W[Worker]
+    W --> S[Sandboxed parser<br/>timeout, limits,<br/>hidden-text stripping]
+    S --> NG{Ingest guard}
+    NG -- risky --> QZ[(Quarantined chunks<br/>never retrieved)]
+    NG -- clean --> VS[(Qdrant, per-workspace filter)]
+    VS --> R
+    R --> P[Spotlighted prompt<br/>data blocks + hierarchy + canary]
+    P --> LLM[LLM]
+    LLM --> OG{Output guard}
+    OG -- canary / prompt leak --> X3[response withheld]
+    OG --> A[Answer<br/>PII redacted, bad citations<br/>and images removed]
+    IG & NG & OG & V -.-> E[(security_events)]
+```
+
+The gateway lives in [`backend/security/`](backend/security), a standalone package with no
+imports from the app, so it reads (and could be reused) as an independent LLM security layer.
+
+| Layer | What it does | What it stops |
+|---|---|---|
+| Upload validation | Detects type from content; size, document-count limits | Renamed executables, polyglots, oversized uploads |
+| Sandboxed parsing | Parses in a killable child process with time (and, on Linux, memory) limits; page/pixel/duration caps | Parser hangs, decompression bombs, huge files |
+| Hidden-text stripping | Removes PDF text that's invisible, low-contrast, tiny or off-page | Hidden instructions in documents |
+| 1. Input guard | Normalises obfuscation (zero-width, homoglyphs, base64/hex, leetspeak) then scores with weighted rules + a DeBERTa injection classifier | Direct injection, jailbreaks, system-prompt extraction |
+| 2. Ingest guard | Scans every chunk (incl. OCR/transcripts/image captions); quarantines risky ones | Indirect injection planted in documents |
+| 3. Prompt construction | Untrusted text in marked data blocks, neutralised delimiters, explicit hierarchy, per-request canary | Documents posing as instructions |
+| 4. Output guard | Blocks canary/system-prompt leaks; redacts PII; strips invalid citations and images | Prompt leaks, PII exposure, fabricated citations, image-beacon exfiltration |
+| Tenancy & auth | Workspace filter on every vector query, per-workspace BM25, cookie auth with CSRF | Cross-tenant data access, session theft/fixation |
+
+### Threat model
+
+**Attackers we design for**
+- A **malicious user** of their own account: crafts questions to override instructions,
+  jailbreak the model, extract the system prompt, or reach other tenants' data (guessed
+  document IDs, forged workspace IDs, tampered tokens).
+- A **poisoned document**: a file uploaded by anyone (including an unwitting user) that
+  carries instructions aimed at the model, visibly or hidden (white text, tiny fonts,
+  off-page text, invisible render mode, text in images or audio).
+- A **hostile file**: crafted to crash, hang or exhaust the parsers.
+- An **anonymous visitor** abusing the demo or auth endpoints.
+
+**Out of scope for now**: a compromised host or database, a malicious LLM provider, and
+denial of service beyond the per-request limits (rate limiting is planned).
+
+### Measured results
+
+`TODO: fill after running redteam/eval` (attack success rate, block rate and false-positive
+rate per category, with the gateway off vs on; Phase 5).
+
+### Known limitations
+
+No prompt-injection defence is complete, and this one isn't either.
+
+- Heuristic rules can be paraphrased around; the classifier catches many paraphrases but
+  not all, and it is English-centric.
+- The classifier produces confident false positives on some benign text, so on its own it
+  only **flags**; blocking or quarantining needs a heuristic signal too. This trades some
+  recall for fewer false blocks.
+- A quarantined chunk is excluded whole, so legitimate text sharing a chunk with an
+  injection is lost.
+- Spotlighting and the instruction hierarchy reduce, but don't eliminate, the chance a
+  model follows injected text that slips past detection. Small local models follow
+  instructions less reliably.
+- The canary catches verbatim leaks; a model paraphrasing its instructions would not trip
+  it (the fingerprint check catches only some verbatim fragments).
+- PII redaction is pattern-based: it misses unusual formats and redacts PII the user may
+  legitimately want to see from their own documents.
+- Hidden-text detection doesn't catch text hidden behind images or shapes.
+- Parser memory caps apply on Linux only.
+- Rate limiting, security headers and the admin dashboard are not built yet.
 
 ## Tech stack
 
@@ -43,7 +129,9 @@ swappable local/hosted LLM backend.
 | Sparse retrieval | rank_bm25 |
 | Vector DB | Qdrant |
 | LLM generation & vision | Ollama (local, default: `llama3.2:3b` + `moondream`) |
-| Document registry | PostgreSQL (SQLAlchemy + Alembic) |
+| Database | PostgreSQL (SQLAlchemy + Alembic) |
+| Queue / worker | Redis + arq |
+| Injection classifier | protectai/deberta-v3-base-prompt-injection-v2 (transformers) |
 | Infra | Docker, Docker Compose |
 
 ## Project structure
@@ -52,29 +140,25 @@ swappable local/hosted LLM backend.
 RAG/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py            # FastAPI app + startup model loading
-│   │   ├── config.py          # all tunables (env-driven)
-│   │   ├── routers/           # documents, chat, search, audio, images
-│   │   ├── schemas/           # Pydantic request/response models
-│   │   ├── services/          # chunking, embedding, retrieval, reranking,
-│   │   │   └── llm/           # OCR, whisper, vision, LLM provider abstraction
-│   │   ├── models/, core/, storage/
-│   ├── data/uploads/          # saved files (gitignored)
-│   ├── eval/                  # eval_dataset.json + run_eval.py
-│   ├── tests/                 # pytest suite
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── .env.example
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx            # Sidebar | ChatArea | SettingsPanel layout
-│   │   ├── api/client.js      # Axios wrapper for every endpoint
-│   │   ├── components/        # layout, documents, chat, common
-│   │   ├── context/, hooks/, utils/
-│   └── .env.example
-├── examples/                  # sample PDF / image / audio for a test run
-├── docker-compose.yml         # qdrant + backend
-└── README.md
+│   │   ├── main.py            # FastAPI app; services built in services/container.py
+│   │   ├── worker.py          # arq background worker (uploads, demo cleanup)
+│   │   ├── cli.py             # create-admin, seed-demo, cleanup-demo
+│   │   ├── auth/              # passwords, tokens, cookies, CSRF, auth service
+│   │   ├── ingestion/         # upload validation, sandboxed parsers, processing job
+│   │   ├── routers/           # auth, admin, documents, chat, search, usage
+│   │   ├── services/          # retrieval, vector store, BM25, OCR, Whisper, demo, quota...
+│   │   ├── db/                # SQLAlchemy models, sessions, audit/security events
+│   │   └── storage/, schemas/, models/, core/
+│   ├── security/              # the LLM security gateway (standalone package)
+│   ├── migrations/            # Alembic migrations
+│   ├── eval/                  # retrieval-quality eval
+│   ├── tests/                 # pytest suite (incl. tenant isolation, security layers)
+│   └── requirements.txt, Dockerfile, .env.example
+├── frontend/src/              # React app: pages, auth context, API client, components
+├── docker/postgres/init/      # creates the test database
+├── examples/                  # sample PDF / image / audio (demo template)
+├── docs/PLAN.md               # phased plan and design decisions
+└── docker-compose.yml         # postgres, redis, qdrant (+ backend)
 ```
 
 ## Prerequisites
@@ -191,17 +275,25 @@ The backend container reaches your host's Ollama via `host.docker.internal:11434
 
 ## API reference
 
+All routes except `/auth/csrf`, `/auth/register`, `/auth/login`, `/auth/refresh`,
+`/auth/logout`, `/auth/demo` and `/health` require a session cookie; every state-changing
+request needs the `X-CSRF-Token` header (from `GET /auth/csrf`).
+
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/documents/upload` | Upload + ingest a PDF/image/audio file (`?force_ocr=true` to force OCR on a PDF) |
-| GET | `/documents` | List all documents with status/chunk counts |
+| GET | `/auth/csrf` | Get a CSRF token |
+| POST | `/auth/register`, `/auth/login` | Create an account / sign in (sets session cookies) |
+| POST | `/auth/refresh`, `/auth/logout` | Rotate the session / revoke it |
+| POST | `/auth/demo` | Start a private 24-hour demo workspace |
+| GET | `/auth/me`, `/usage/me` | Current user; today's query usage and demo expiry |
+| POST | `/documents/upload` | Upload a file; returns 202 with a `queued` document (`?force_ocr=true` for PDFs) |
+| GET | `/documents` | List your workspace's documents (status, chunks, hidden spans, quarantine count) |
 | DELETE | `/documents/{document_id}` | Delete a document and its chunks |
-| GET | `/documents/{document_id}/chunks` | Inspect a document's stored chunks |
-| POST | `/documents/reset` | Wipe all documents, vectors, and the BM25 index |
-| POST | `/chat` | Ask a question; returns a grounded answer + citations + retrieval metadata |
+| GET | `/documents/{document_id}/chunks` | Inspect stored chunks, incl. quarantine reasons |
+| POST | `/documents/reset` | Delete every document in your workspace |
+| POST | `/chat` | Grounded answer + citations + retrieval and security metadata |
 | POST | `/search` | Retrieval only, no generation |
-| POST | `/audio/transcribe` | Standalone Whisper transcription |
-| POST | `/images/analyze` | Standalone OCR + vision description |
+| GET | `/admin/users` | Admin only |
 | GET | `/health` | Liveness check |
 
 Example `/chat` response:
@@ -214,7 +306,9 @@ Example `/chat` response:
       "chunk_id": "...", "score": 0.87, "text_snippet": "..." }
   ],
   "retrieval": { "top_k": 10, "reranked": true, "hybrid": true, "reranked_chunks": 4,
-                 "dense_candidate_count": 10, "bm25_candidate_count": 10 }
+                 "dense_candidate_count": 10, "bm25_candidate_count": 10 },
+  "security": { "input_flagged": false, "pii_redactions": { "email": 1 },
+                "removed_citations": [], "removed_images": 0 }
 }
 ```
 
@@ -222,16 +316,15 @@ Example `/chat` response:
 
 ```bash
 cd backend
-pytest tests/ -v          # requires Qdrant running for most tests (auto-skipped otherwise)
+pytest tests/ -v          # needs Postgres, Redis and Qdrant from docker compose (auto-skipped otherwise)
 python eval/run_eval.py   # retrieval quality metrics (Recall@K, Precision@K, MRR)
 ```
 
-## Known limitations
+## Other limitations
 
-- Default local models (`llama3.2:3b`, `moondream`) are small, chosen to fit 4GB VRAM —
-  they can misread numbers or produce shallower answers than larger/hosted models.
-- BM25 index is rebuilt in-memory on every document add/delete (fine at small scale, not
-  incrementally optimized).
+- Default local models (`llama3.2:3b`, `moondream`) are small, chosen to fit 4GB VRAM; they
+  can misread numbers or give shallower answers than larger or hosted models.
+- BM25 indexes are rebuilt in memory per workspace when its documents change (fine at small
+  scale, not incremental).
 - Scanned-page detection is heuristic; use `?force_ocr=true` to override it.
-- File upload is processed synchronously (no background job queue).
-- Frontend isn't containerized (runs via `npm run dev` for fast local iteration).
+- The frontend isn't containerized yet (runs via `npm run dev`).
