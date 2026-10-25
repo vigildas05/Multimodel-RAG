@@ -26,6 +26,7 @@ from app.services.reranking_service import RerankingService
 from app.services.retrieval_service import RetrievalService
 from app.services.vector_store_service import VectorStoreService
 from app.services.whisper_service import WhisperService
+from app.storage.workspace_repository import WorkspaceRepository
 
 logger = logging.getLogger("app.main")
 
@@ -71,13 +72,13 @@ async def lifespan(app: FastAPI):
         vector_store=app.state.vector_store,
         bm25_service=app.state.bm25_service,
         reranking_service=app.state.reranking_service,
+        corpus_version=WorkspaceRepository(app.state.session_factory).get_corpus_version,
         rrf_k=settings.RRF_K,
     )
     app.state.document_service = DocumentService(
         session_factory=app.state.session_factory,
         embedding_service=app.state.embedding_service,
         vector_store=app.state.vector_store,
-        bm25_service=app.state.bm25_service,
         ocr_service=app.state.ocr_service,
         whisper_service=app.state.whisper_service,
         llm_provider=app.state.llm_provider,
@@ -85,10 +86,6 @@ async def lifespan(app: FastAPI):
         chunk_size=settings.CHUNK_SIZE,
         chunk_overlap=settings.CHUNK_OVERLAP,
     )
-
-    # BM25 is in-memory only; rebuild it from Qdrant (the source of truth) on startup
-    # so keyword search survives a backend restart.
-    app.state.document_service.rebuild_bm25_from_store()
 
     logger.info("Startup complete.")
     yield

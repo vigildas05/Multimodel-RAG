@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import get_current_user
-from app.dependencies import get_retrieval_service
+from app.auth.service import AuthenticatedUser
+from app.dependencies import get_registry, get_retrieval_service
+from app.routers.retrieval_scope import build_retrieval_settings
 from app.schemas.search import RetrievedChunk, SearchRequest, SearchResponse
-from app.services.retrieval_service import RetrievalService, RetrievalSettings
+from app.services.retrieval_service import RetrievalService
+from app.storage.document_registry import DocumentRegistry
 
 router = APIRouter(tags=["search"], dependencies=[Depends(get_current_user)])
 
@@ -11,18 +15,13 @@ router = APIRouter(tags=["search"], dependencies=[Depends(get_current_user)])
 @router.post("/search", response_model=SearchResponse)
 async def search(
     request: SearchRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+    registry: DocumentRegistry = Depends(get_registry),
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
 ) -> SearchResponse:
     s = request.settings
-    retrieval_settings = RetrievalSettings(
-        retrieval_top_k=s.retrieval_top_k,
-        final_context_chunks=s.final_context_chunks,
-        use_hybrid_search=s.use_hybrid_search,
-        use_reranking=s.use_reranking,
-        similarity_threshold=s.similarity_threshold,
-        document_ids=s.document_ids,
-    )
-    result = retrieval_service.retrieve(request.query, retrieval_settings)
+    retrieval_settings = await build_retrieval_settings(s, registry)
+    result = await run_in_threadpool(retrieval_service.retrieve, user.scope, request.query, retrieval_settings)
 
     chunks = [
         RetrievedChunk(

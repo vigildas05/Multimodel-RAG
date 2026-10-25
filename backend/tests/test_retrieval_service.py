@@ -5,6 +5,7 @@ import uuid
 
 import pytest
 
+from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 from app.services.bm25_service import BM25Service
 from app.services.embedding_service import EmbeddingService
@@ -13,6 +14,7 @@ from app.services.retrieval_service import RetrievalService, RetrievalSettings
 from app.services.vector_store_service import VectorStoreService
 
 TEST_COLLECTION = "test_retrieval_service"
+SCOPE = TenantScope(workspace_id=str(uuid.uuid4()), user_id=str(uuid.uuid4()))
 
 
 def _qdrant_available() -> bool:
@@ -66,38 +68,35 @@ def populated_service(embedder, reranker):
         )
         for i, (text, vec) in enumerate(zip(DOCS, vectors))
     ]
-    store.upsert_chunks(chunks)
+    store.upsert_chunks(SCOPE, chunks)
 
-    bm25 = BM25Service()
-    bm25.rebuild(store.get_all_chunks())
-
-    service = RetrievalService(embedder, store, bm25, reranker, rrf_k=60)
+    service = RetrievalService(embedder, store, BM25Service(), reranker, corpus_version=lambda _: 0, rrf_k=60)
     yield service
     store.reset_collection()
 
 
 def test_dense_only_retrieval_returns_most_relevant_chunk(populated_service):
     settings = RetrievalSettings(retrieval_top_k=4, final_context_chunks=1, use_hybrid_search=False, use_reranking=False)
-    result = populated_service.retrieve("Where is the Eiffel Tower?", settings)
+    result = populated_service.retrieve(SCOPE, "Where is the Eiffel Tower?", settings)
     assert "Eiffel Tower" in result.chunks[0]["text"]
 
 
 def test_reranking_improves_top_result(populated_service):
     settings = RetrievalSettings(retrieval_top_k=4, final_context_chunks=1, use_hybrid_search=True, use_reranking=True)
-    result = populated_service.retrieve("What programming language is known for readable syntax?", settings)
+    result = populated_service.retrieve(SCOPE, "What programming language is known for readable syntax?", settings)
     assert "Python" in result.chunks[0]["text"]
     assert result.metadata.reranked is True
 
 
 def test_final_context_chunks_limits_output_size(populated_service):
     settings = RetrievalSettings(retrieval_top_k=4, final_context_chunks=2, use_hybrid_search=True, use_reranking=True)
-    result = populated_service.retrieve("Tell me about famous landmarks", settings)
+    result = populated_service.retrieve(SCOPE, "Tell me about famous landmarks", settings)
     assert len(result.chunks) <= 2
 
 
 def test_metadata_reflects_settings(populated_service):
     settings = RetrievalSettings(retrieval_top_k=3, final_context_chunks=2, use_hybrid_search=False, use_reranking=False)
-    result = populated_service.retrieve("mountains", settings)
+    result = populated_service.retrieve(SCOPE, "mountains", settings)
     assert result.metadata.top_k == 3
     assert result.metadata.hybrid is False
     assert result.metadata.reranked is False

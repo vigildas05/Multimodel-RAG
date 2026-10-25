@@ -72,12 +72,13 @@ def test_weak_password_and_bad_email_rejected(client):
     assert bad_email.status_code == 422
 
 
-def test_register_ignores_client_supplied_role(client, session_factory):
+def test_register_rejects_client_supplied_role(client, session_factory):
     fetch_csrf(client)
     email = unique_email()
     resp = client.post("/auth/register", json={"email": email, "password": TEST_PASSWORD, "role": "admin"})
-    assert resp.status_code == 201
-    assert resp.json()["user"]["role"] == "user"
+    assert resp.status_code == 422
+    with session_factory() as session:
+        assert session.scalar(select(User).where(User.email == email)) is None
 
 
 # --- login ------------------------------------------------------------------------

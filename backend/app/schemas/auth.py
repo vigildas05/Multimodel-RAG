@@ -1,9 +1,11 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.auth.passwords import PASSWORD_MAX_LENGTH
 
 
 class CredentialsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     # Policy (minimum length etc.) is checked in the auth service; this only bounds input size.
     password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)

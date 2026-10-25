@@ -5,12 +5,17 @@ Retrieval favors recall (cast a wide net with top_k candidates); reranking favor
 precision (cut that pool down to the few chunks actually worth sending to the LLM).
 Conflating the two — e.g. sending all retrieval_top_k chunks straight to the LLM —
 wastes context window on marginally-relevant text and measurably hurts answer quality.
+
+This is the ONLY query entry point for routers: every retrieval is bound to a TenantScope,
+and both retrievers (Qdrant dense search and the BM25 index) are scoped to that workspace.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from app.core.exceptions import NoRelevantResultsError
+from app.core.tenancy import TenantScope
 from app.services.bm25_service import BM25Service
 from app.services.embedding_service import EmbeddingService
 from app.services.reranking_service import RerankingService
@@ -55,15 +60,19 @@ class RetrievalService:
         vector_store: VectorStoreService,
         bm25_service: BM25Service,
         reranking_service: RerankingService,
+        corpus_version: Callable[[str], int],
         rrf_k: int = 60,
     ):
+        """`corpus_version(workspace_id)` returns the workspace's current corpus version
+        (see BM25Service); a newer version makes the BM25 index rebuild."""
         self._embedding_service = embedding_service
         self._vector_store = vector_store
         self._bm25_service = bm25_service
         self._reranking_service = reranking_service
+        self._corpus_version = corpus_version
         self._rrf_k = rrf_k
 
-    def retrieve(self, query: str, settings: RetrievalSettings) -> RetrievalResult:
+    def retrieve(self, scope: TenantScope, query: str, settings: RetrievalSettings) -> RetrievalResult:
         query_vector = self._embedding_service.embed_query(query)
 
         candidate_pool_size = (
@@ -71,6 +80,7 @@ class RetrievalService:
         )
 
         dense_results = self._vector_store.search(
+            scope,
             query_vector=query_vector.tolist(),
             top_k=candidate_pool_size,
             document_ids=settings.document_ids,
@@ -79,7 +89,13 @@ class RetrievalService:
 
         bm25_results: list[dict] = []
         if settings.use_hybrid_search:
-            bm25_results = self._bm25_service.search(query, top_k=candidate_pool_size)
+            bm25_results = self._bm25_service.search(
+                scope.workspace_id,
+                self._corpus_version(scope.workspace_id),
+                query,
+                top_k=candidate_pool_size,
+                load_corpus=lambda: self._vector_store.get_workspace_chunks(scope),
+            )
             if settings.document_ids:
                 bm25_results = [r for r in bm25_results if r["document_id"] in settings.document_ids]
             if settings.file_types:

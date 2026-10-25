@@ -1,14 +1,18 @@
 import logging
 
 from fastapi import APIRouter, Depends
+from starlette.concurrency import run_in_threadpool
 
-from app.config import Settings
 from app.auth.dependencies import get_current_user
-from app.dependencies import get_app_settings, get_llm_provider, get_retrieval_service
+from app.auth.service import AuthenticatedUser
+from app.config import Settings
+from app.dependencies import get_app_settings, get_llm_provider, get_registry, get_retrieval_service
+from app.routers.retrieval_scope import build_retrieval_settings
 from app.schemas.chat import ChatRequest, ChatResponse, RetrievalInfo, SourceCitation
 from app.services.llm.base import LLMProvider
 from app.services.prompt_builder import SYSTEM_PROMPT, build_user_prompt
-from app.services.retrieval_service import RetrievalService, RetrievalSettings
+from app.services.retrieval_service import RetrievalService
+from app.storage.document_registry import DocumentRegistry
 
 logger = logging.getLogger("app.routers.chat")
 router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user)])
@@ -17,20 +21,15 @@ router = APIRouter(tags=["chat"], dependencies=[Depends(get_current_user)])
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+    registry: DocumentRegistry = Depends(get_registry),
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
     llm_provider: LLMProvider = Depends(get_llm_provider),
     settings: Settings = Depends(get_app_settings),
 ) -> ChatResponse:
     s = request.settings
-    retrieval_settings = RetrievalSettings(
-        retrieval_top_k=s.retrieval_top_k,
-        final_context_chunks=s.final_context_chunks,
-        use_hybrid_search=s.use_hybrid_search,
-        use_reranking=s.use_reranking,
-        similarity_threshold=s.similarity_threshold,
-        document_ids=s.document_ids,
-    )
-    result = retrieval_service.retrieve(request.question, retrieval_settings)
+    retrieval_settings = await build_retrieval_settings(s, registry)
+    result = await run_in_threadpool(retrieval_service.retrieve, user.scope, request.question, retrieval_settings)
 
     user_prompt = build_user_prompt(request.question, result.chunks)
     generation = await llm_provider.generate(

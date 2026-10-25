@@ -85,6 +85,17 @@ class DocumentRegistry:
             )
             return [self._to_record(row) for row in rows]
 
+    def owned_ids(self, document_ids: list[str]) -> set[str]:
+        """The subset of `document_ids` that exist in this workspace."""
+        candidates = [d for d in set(document_ids) if _is_uuid(d)]
+        if not candidates:
+            return set()
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(Document.id).where(Document.id.in_(candidates), Document.workspace_id == self._workspace_id)
+            )
+            return set(rows)
+
     def delete(self, document_id: str) -> None:
         if not _is_uuid(document_id):
             return

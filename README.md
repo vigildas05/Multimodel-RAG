@@ -112,7 +112,7 @@ ollama pull moondream
 docker compose up -d postgres redis qdrant
 ```
 
-The backend creates the `document_chunks` collection automatically on first startup — no
+The backend creates the `chunks_v2` collection automatically on first startup — no
 manual setup needed. Qdrant's dashboard is browsable at `http://localhost:6333/dashboard`.
 Postgres also gets a separate `sentinel_test` database for the test suite.
 

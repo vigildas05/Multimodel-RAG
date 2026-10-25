@@ -5,11 +5,13 @@ import uuid
 
 import pytest
 
+from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 from app.services.embedding_service import EmbeddingService
 from app.services.vector_store_service import VectorStoreService
 
 TEST_COLLECTION = "test_vector_store_service"
+SCOPE = TenantScope(workspace_id=str(uuid.uuid4()), user_id=str(uuid.uuid4()))
 
 
 def _qdrant_available() -> bool:
@@ -56,10 +58,10 @@ def test_upsert_and_search(store, embedder):
     texts = ["The sky is blue.", "Paris is the capital of France."]
     vectors = embedder.embed_chunks(texts)
     chunks = [_make_chunk(doc_id, i, t, v, page=i + 1) for i, (t, v) in enumerate(zip(texts, vectors))]
-    store.upsert_chunks(chunks)
+    store.upsert_chunks(SCOPE, chunks)
 
     query_vector = embedder.embed_query("What color is the sky?")
-    results = store.search(query_vector.tolist(), top_k=2)
+    results = store.search(SCOPE, query_vector.tolist(), top_k=2)
 
     assert len(results) == 2
     assert results[0]["text"] == "The sky is blue."
@@ -68,20 +70,20 @@ def test_upsert_and_search(store, embedder):
 def test_delete_by_document_id(store, embedder):
     doc_id = str(uuid.uuid4())
     vectors = embedder.embed_chunks(["some content"])
-    store.upsert_chunks([_make_chunk(doc_id, 0, "some content", vectors[0])])
+    store.upsert_chunks(SCOPE, [_make_chunk(doc_id, 0, "some content", vectors[0])])
 
-    assert len(store.get_chunks_by_document(doc_id)) == 1
-    store.delete_by_document_id(doc_id)
-    assert len(store.get_chunks_by_document(doc_id)) == 0
+    assert len(store.get_chunks_by_document(SCOPE, doc_id)) == 1
+    store.delete_by_document_id(SCOPE, doc_id)
+    assert len(store.get_chunks_by_document(SCOPE, doc_id)) == 0
 
 
 def test_filter_by_document_id(store, embedder):
     doc_a, doc_b = str(uuid.uuid4()), str(uuid.uuid4())
     vectors = embedder.embed_chunks(["alpha content", "beta content"])
-    store.upsert_chunks([_make_chunk(doc_a, 0, "alpha content", vectors[0])])
-    store.upsert_chunks([_make_chunk(doc_b, 0, "beta content", vectors[1])])
+    store.upsert_chunks(SCOPE, [_make_chunk(doc_a, 0, "alpha content", vectors[0])])
+    store.upsert_chunks(SCOPE, [_make_chunk(doc_b, 0, "beta content", vectors[1])])
 
     query_vector = embedder.embed_query("content")
-    results = store.search(query_vector.tolist(), top_k=10, document_ids=[doc_a])
+    results = store.search(SCOPE, query_vector.tolist(), top_k=10, document_ids=[doc_a])
 
     assert all(r["document_id"] == doc_a for r in results)

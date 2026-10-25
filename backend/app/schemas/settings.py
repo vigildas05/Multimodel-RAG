@@ -1,9 +1,12 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RetrievalSettingsSchema(BaseModel):
     """Shared settings block sent by the frontend with /chat and /search requests.
     Backend config values are used as defaults when a field is omitted."""
+
+    # Unknown fields (e.g. a smuggled "workspace_id") are rejected, not silently ignored.
+    model_config = ConfigDict(extra="forbid")
 
     retrieval_top_k: int = Field(default=10, ge=1, le=50)
     final_context_chunks: int = Field(default=4, ge=1, le=20)

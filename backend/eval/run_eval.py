@@ -24,6 +24,7 @@ from pathlib import Path
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.core.tenancy import TenantScope  # noqa: E402
 from app.models.chunk import Chunk  # noqa: E402
 from app.services.bm25_service import BM25Service  # noqa: E402
 from app.services.chunking_service import RecursiveChunker  # noqa: E402
@@ -35,6 +36,8 @@ from app.services.vector_store_service import VectorStoreService  # noqa: E402
 EVAL_COLLECTION = "eval_document_chunks"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 RERANKER_MODEL = "BAAI/bge-reranker-base"
+# The eval corpus lives in a single synthetic workspace of its own collection.
+EVAL_SCOPE = TenantScope(workspace_id="00000000-0000-4000-8000-00000000e7a1", user_id="00000000-0000-4000-8000-00000000e7a1")
 
 
 def load_dataset() -> dict:
@@ -63,7 +66,7 @@ def ingest_corpus(dataset: dict, embedder: EmbeddingService, store: VectorStoreS
     vectors = embedder.embed_chunks([c.text for c in all_chunks])
     for chunk, vec in zip(all_chunks, vectors):
         chunk.embedding = vec.tolist()
-    store.upsert_chunks(all_chunks)
+    store.upsert_chunks(EVAL_SCOPE, all_chunks)
     return all_chunks
 
 
@@ -103,9 +106,8 @@ def main():
     dataset = load_dataset()
     print(f"Ingesting {len(dataset['corpus'])} documents into eval collection '{EVAL_COLLECTION}'...")
     ingest_corpus(dataset, embedder, store, chunker)
-    bm25.rebuild(store.get_all_chunks())
 
-    retrieval_service = RetrievalService(embedder, store, bm25, reranker, rrf_k=60)
+    retrieval_service = RetrievalService(embedder, store, bm25, reranker, corpus_version=lambda _: 0, rrf_k=60)
     settings = RetrievalSettings(
         retrieval_top_k=args.top_k,
         final_context_chunks=args.final_k,
@@ -123,7 +125,7 @@ def main():
     rows = []
     for q in dataset["questions"]:
         try:
-            result = retrieval_service.retrieve(q["question"], settings)
+            result = retrieval_service.retrieve(EVAL_SCOPE, q["question"], settings)
             retrieved_doc_ids = [c["document_id"] for c in result.chunks]
         except Exception:
             retrieved_doc_ids = []

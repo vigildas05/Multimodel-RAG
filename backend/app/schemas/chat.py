@@ -1,9 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.schemas.settings import RetrievalSettingsSchema
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     question: str
     settings: RetrievalSettingsSchema = RetrievalSettingsSchema()
 

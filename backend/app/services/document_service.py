@@ -1,5 +1,7 @@
 """High-level ingestion orchestrator: raw file bytes -> extraction -> chunking ->
-embedding -> storage (Qdrant + BM25 index), for all three modalities.
+embedding -> storage (Qdrant), for all three modalities. Every write is bound to the
+caller's TenantScope, and bumps the workspace's corpus_version afterwards so cached
+BM25 indexes know to rebuild.
 """
 
 import logging
@@ -14,7 +16,6 @@ from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 from app.models.document import DocumentRecord
 from app.services import pdf_service
-from app.services.bm25_service import BM25Service
 from app.services.chunking_service import RecursiveChunker
 from app.services.embedding_service import EmbeddingService
 from app.services.llm.base import LLMProvider
@@ -23,6 +24,7 @@ from app.services.vector_store_service import VectorStoreService
 from app.services.vision_service import describe_image
 from app.services.whisper_service import WhisperService
 from app.storage.document_registry import DocumentRegistry
+from app.storage.workspace_repository import WorkspaceRepository
 
 logger = logging.getLogger("app.services.document")
 
@@ -37,7 +39,6 @@ class DocumentService:
         session_factory: sessionmaker[Session],
         embedding_service: EmbeddingService,
         vector_store: VectorStoreService,
-        bm25_service: BM25Service,
         ocr_service: OCRService,
         whisper_service: WhisperService,
         llm_provider: LLMProvider,
@@ -46,9 +47,9 @@ class DocumentService:
         chunk_overlap: int,
     ):
         self._session_factory = session_factory
+        self._workspaces = WorkspaceRepository(session_factory)
         self._embedding_service = embedding_service
         self._vector_store = vector_store
-        self._bm25_service = bm25_service
         self._ocr_service = ocr_service
         self._whisper_service = whisper_service
         self._llm_provider = llm_provider
@@ -59,11 +60,8 @@ class DocumentService:
     def _registry(self, scope: TenantScope) -> DocumentRegistry:
         return DocumentRegistry(self._session_factory, scope.workspace_id)
 
-    def rebuild_bm25_from_store(self) -> None:
-        self._bm25_service.rebuild(self._vector_store.get_all_chunks())
-
-    def get_chunks(self, document_id: str) -> list[dict]:
-        return self._vector_store.get_chunks_by_document(document_id)
+    def get_chunks(self, scope: TenantScope, document_id: str) -> list[dict]:
+        return self._vector_store.get_chunks_by_document(scope, document_id)
 
     async def ingest_pdf(
         self,
@@ -118,7 +116,7 @@ class DocumentService:
                 detail="The document may be empty, corrupted, or OCR failed to find any text.",
             )
 
-        await self._embed_and_store(chunks)
+        await self._embed_and_store(scope, chunks)
         return await self._finalize(scope, document_id, filename, "pdf", chunks, num_pages=len(pages), used_ocr=any_ocr)
 
     async def ingest_image(
@@ -161,7 +159,7 @@ class DocumentService:
             for i, tc in enumerate(text_chunks)
         ]
 
-        await self._embed_and_store(chunks)
+        await self._embed_and_store(scope, chunks)
         return await self._finalize(scope, document_id, filename, "image", chunks, used_ocr=bool(ocr_text.strip()))
 
     async def ingest_audio(
@@ -195,7 +193,7 @@ class DocumentService:
             for i, (text, start, end) in enumerate(packed)
         ]
 
-        await self._embed_and_store(chunks)
+        await self._embed_and_store(scope, chunks)
         duration = transcription.segments[-1].end if transcription.segments else None
         return await self._finalize(scope, document_id, filename, "audio", chunks, duration_seconds=duration)
 
@@ -223,13 +221,15 @@ class DocumentService:
             packed.append((buffer_text, buffer_start, buffer_end))
         return packed
 
-    async def _embed_and_store(self, chunks: list[Chunk]) -> None:
+    async def _embed_and_store(self, scope: TenantScope, chunks: list[Chunk]) -> None:
         texts = [c.text for c in chunks]
         embeddings = await run_in_threadpool(self._embedding_service.embed_chunks, texts)
         for chunk, vec in zip(chunks, embeddings):
             chunk.embedding = vec.tolist()
-        await run_in_threadpool(self._vector_store.upsert_chunks, chunks)
-        await run_in_threadpool(self.rebuild_bm25_from_store)
+        await run_in_threadpool(self._vector_store.upsert_chunks, scope, chunks)
+        # Bump only after the write is visible, so a reader that sees the new version
+        # is guaranteed to load the new chunks.
+        await run_in_threadpool(self._workspaces.bump_corpus_version, scope.workspace_id)
 
     async def _finalize(
         self,
@@ -257,16 +257,15 @@ class DocumentService:
         return record
 
     async def delete_document(self, scope: TenantScope, document_id: str) -> None:
-        await run_in_threadpool(self._vector_store.delete_by_document_id, document_id)
+        await run_in_threadpool(self._vector_store.delete_by_document_id, scope, document_id)
         await run_in_threadpool(self._registry(scope).delete, document_id)
-        await run_in_threadpool(self.rebuild_bm25_from_store)
+        await run_in_threadpool(self._workspaces.bump_corpus_version, scope.workspace_id)
 
     async def reset_workspace(self, scope: TenantScope) -> int:
         """Delete every document in the caller's workspace (and only that workspace)."""
         registry = self._registry(scope)
         records = await run_in_threadpool(registry.list_all)
-        for record in records:
-            await run_in_threadpool(self._vector_store.delete_by_document_id, record.document_id)
+        await run_in_threadpool(self._vector_store.delete_workspace, scope)
         await run_in_threadpool(registry.reset)
-        await run_in_threadpool(self.rebuild_bm25_from_store)
+        await run_in_threadpool(self._workspaces.bump_corpus_version, scope.workspace_id)
         return len(records)

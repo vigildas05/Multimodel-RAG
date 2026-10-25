@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     # --- Qdrant ---
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
-    QDRANT_COLLECTION: str = "document_chunks"
+    # chunks_v2: every point carries a workspace_id payload (tenant-indexed).
+    QDRANT_COLLECTION: str = "chunks_v2"
 
     # --- Chunking ---
     CHUNK_SIZE: int = 800

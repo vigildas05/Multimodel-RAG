@@ -1,3 +1,12 @@
+"""The only module that talks to Qdrant.
+
+Tenant isolation is enforced here, at the single choke point: every read, write and
+delete takes a TenantScope and always adds a `workspace_id == scope.workspace_id`
+condition. There is intentionally no unscoped search, scroll or delete — callers can't
+forget the filter because they can't express a query without a scope.
+(tests/test_tenant_isolation.py checks both properties.)
+"""
+
 import logging
 import uuid
 
@@ -7,23 +16,37 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    KeywordIndexParams,
+    KeywordIndexType,
+    MatchAny,
     MatchValue,
     PointStruct,
     VectorParams,
 )
 
 from app.core.exceptions import VectorStoreUnavailableError
+from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 
 logger = logging.getLogger("app.services.vector_store")
 
+WORKSPACE_FIELD = "workspace_id"
+
 
 class VectorStoreService:
-    def __init__(self, host: str, port: int, collection_name: str, vector_dim: int):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        collection_name: str,
+        vector_dim: int,
+        client: QdrantClient | None = None,
+    ):
+        """`client` lets tests inject e.g. QdrantClient(":memory:") instead of a server."""
         self._collection_name = collection_name
         self._vector_dim = vector_dim
         try:
-            self._client = QdrantClient(host=host, port=port, timeout=10)
+            self._client = client or QdrantClient(host=host, port=port, timeout=10)
             self._ensure_collection()
         except Exception as exc:  # noqa: BLE001
             raise VectorStoreUnavailableError(
@@ -38,18 +61,34 @@ class VectorStoreService:
                 collection_name=self._collection_name,
                 vectors_config=VectorParams(size=self._vector_dim, distance=Distance.COSINE),
             )
-            self._client.create_payload_index(self._collection_name, "document_id", field_schema="keyword")
-            self._client.create_payload_index(self._collection_name, "file_type", field_schema="keyword")
             logger.info("Created Qdrant collection '%s'", self._collection_name)
+        # Idempotent; also upgrades collections created before tenancy existed.
+        # is_tenant=True tells Qdrant to co-locate each workspace's points on disk, so
+        # filtered searches stay fast with many tenants in one collection.
+        self._client.create_payload_index(
+            self._collection_name,
+            WORKSPACE_FIELD,
+            field_schema=KeywordIndexParams(type=KeywordIndexType.KEYWORD, is_tenant=True),
+        )
+        self._client.create_payload_index(self._collection_name, "document_id", field_schema="keyword")
+        self._client.create_payload_index(self._collection_name, "file_type", field_schema="keyword")
 
     def reset_collection(self) -> None:
+        """Destructive and UNSCOPED: drops every tenant's data. Only for test and eval setup
+        against their own collections; never called from a request path."""
         try:
             self._client.delete_collection(self._collection_name)
         except (UnexpectedResponse, ValueError):
             pass
         self._ensure_collection()
 
-    def upsert_chunks(self, chunks: list[Chunk]) -> None:
+    @staticmethod
+    def _scoped_filter(scope: TenantScope, *conditions: FieldCondition | Filter) -> Filter:
+        return Filter(
+            must=[FieldCondition(key=WORKSPACE_FIELD, match=MatchValue(value=scope.workspace_id)), *conditions]
+        )
+
+    def upsert_chunks(self, scope: TenantScope, chunks: list[Chunk]) -> None:
         if not chunks:
             return
         points = [
@@ -57,6 +96,8 @@ class VectorStoreService:
                 id=str(uuid.uuid4()),
                 vector=chunk.embedding,
                 payload={
+                    # Stamped from the caller's scope, never from the chunk or the request.
+                    WORKSPACE_FIELD: scope.workspace_id,
                     "document_id": chunk.document_id,
                     "chunk_id": chunk.chunk_id,
                     "filename": chunk.filename,
@@ -80,29 +121,23 @@ class VectorStoreService:
 
     def search(
         self,
+        scope: TenantScope,
         query_vector,
         top_k: int,
         document_ids: list[str] | None = None,
         file_types: list[str] | None = None,
     ) -> list[dict]:
-        query_filter = None
         conditions = []
         if document_ids:
-            conditions.append(
-                Filter(should=[FieldCondition(key="document_id", match=MatchValue(value=d)) for d in document_ids])
-            )
+            conditions.append(FieldCondition(key="document_id", match=MatchAny(any=list(document_ids))))
         if file_types:
-            conditions.append(
-                Filter(should=[FieldCondition(key="file_type", match=MatchValue(value=f)) for f in file_types])
-            )
-        if conditions:
-            query_filter = Filter(must=conditions)
+            conditions.append(FieldCondition(key="file_type", match=MatchAny(any=list(file_types))))
 
         try:
             results = self._client.search(
                 collection_name=self._collection_name,
                 query_vector=query_vector,
-                query_filter=query_filter,
+                query_filter=self._scoped_filter(scope, *conditions),
                 limit=top_k,
                 with_payload=True,
             )
@@ -111,38 +146,45 @@ class VectorStoreService:
 
         return [{"score": r.score, **r.payload} for r in results]
 
-    def delete_by_document_id(self, document_id: str) -> None:
+    def delete_by_document_id(self, scope: TenantScope, document_id: str) -> None:
+        self._delete(scope, FieldCondition(key="document_id", match=MatchValue(value=document_id)))
+
+    def delete_workspace(self, scope: TenantScope) -> None:
+        self._delete(scope)
+
+    def _delete(self, scope: TenantScope, *conditions: FieldCondition) -> None:
         try:
             self._client.delete(
                 collection_name=self._collection_name,
-                points_selector=Filter(must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]),
+                points_selector=self._scoped_filter(scope, *conditions),
             )
         except Exception as exc:  # noqa: BLE001
-            raise VectorStoreUnavailableError("Failed to delete document chunks from Qdrant.", detail=str(exc)) from exc
+            raise VectorStoreUnavailableError("Failed to delete chunks from Qdrant.", detail=str(exc)) from exc
 
-    def get_chunks_by_document(self, document_id: str) -> list[dict]:
-        try:
-            points, _ = self._client.scroll(
-                collection_name=self._collection_name,
-                scroll_filter=Filter(must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]),
-                limit=1000,
-                with_payload=True,
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise VectorStoreUnavailableError("Failed to fetch chunks from Qdrant.", detail=str(exc)) from exc
-        chunks = [p.payload for p in points]
+    def get_chunks_by_document(self, scope: TenantScope, document_id: str) -> list[dict]:
+        chunks = self._scroll(scope, FieldCondition(key="document_id", match=MatchValue(value=document_id)))
         chunks.sort(key=lambda c: c.get("chunk_index", 0))
         return chunks
 
-    def get_all_chunks(self) -> list[dict]:
-        """Used to rebuild the in-memory BM25 index from Qdrant on startup."""
-        all_points = []
+    def get_workspace_chunks(self, scope: TenantScope) -> list[dict]:
+        """Every chunk in one workspace; used to build that workspace's BM25 index."""
+        return self._scroll(scope)
+
+    def _scroll(self, scope: TenantScope, *conditions: FieldCondition) -> list[dict]:
+        payloads: list[dict] = []
         offset = None
-        while True:
-            points, offset = self._client.scroll(
-                collection_name=self._collection_name, limit=500, offset=offset, with_payload=True
-            )
-            all_points.extend(p.payload for p in points)
-            if offset is None:
-                break
-        return all_points
+        try:
+            while True:
+                points, offset = self._client.scroll(
+                    collection_name=self._collection_name,
+                    scroll_filter=self._scoped_filter(scope, *conditions),
+                    limit=500,
+                    offset=offset,
+                    with_payload=True,
+                )
+                payloads.extend(p.payload for p in points)
+                if offset is None:
+                    break
+        except Exception as exc:  # noqa: BLE001
+            raise VectorStoreUnavailableError("Failed to fetch chunks from Qdrant.", detail=str(exc)) from exc
+        return payloads

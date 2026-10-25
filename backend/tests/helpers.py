@@ -1,5 +1,7 @@
+import io
 import uuid
 
+import fitz
 from fastapi.testclient import TestClient
 
 TEST_PASSWORD = "correct horse battery staple"
@@ -31,6 +33,19 @@ def login(client: TestClient, email: str, password: str = TEST_PASSWORD):
     if resp.status_code == 200:
         client.headers[CSRF_HEADER] = resp.json()["csrf_token"]
     return resp
+
+
+def make_pdf(text: str) -> bytes:
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_textbox(fitz.Rect(50, 50, 550, 800), text)
+    return doc.tobytes()
+
+
+def upload_pdf(client: TestClient, text: str, filename: str = "doc.pdf") -> dict:
+    resp = client.post("/documents/upload", files={"file": (filename, io.BytesIO(make_pdf(text)), "application/pdf")})
+    assert resp.status_code == 200, resp.text
+    return resp.json()["document"]
 
 
 def set_cookie_headers(resp) -> dict[str, str]:

@@ -1,9 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.schemas.settings import RetrievalSettingsSchema
 
 
 class SearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     query: str
     settings: RetrievalSettingsSchema = RetrievalSettingsSchema()
 

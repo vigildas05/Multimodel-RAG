@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, UploadFile
 from fastapi.param_functions import Query
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
@@ -114,13 +115,14 @@ async def delete_document(
 @router.get("/{document_id}/chunks", response_model=DocumentChunksResponse)
 async def get_document_chunks(
     document_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
     registry: DocumentRegistry = Depends(get_registry),
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentChunksResponse:
     record = registry.get(document_id)
     if record is None:
         raise DocumentNotFoundError(f"Document '{document_id}' was not found.")
-    raw_chunks = document_service.get_chunks(document_id)
+    raw_chunks = await run_in_threadpool(document_service.get_chunks, user.scope, document_id)
     chunks = [
         ChunkResponse(
             chunk_id=c["chunk_id"],
