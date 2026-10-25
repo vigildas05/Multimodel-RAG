@@ -22,19 +22,26 @@ class PageContent:
 
 
 def extract_pages(pdf_bytes: bytes) -> list[PageContent]:
-    pages: list[PageContent] = []
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        for i, page in enumerate(doc):
-            text = page.get_text("text").strip()
-            is_scanned = len(text) < MIN_TEXT_CHARS_PER_PAGE
-            pages.append(PageContent(page_number=i + 1, text=text, is_scanned=is_scanned))
+        return extract_pages_from_document(doc)
+
+
+def extract_pages_from_document(doc: "fitz.Document") -> list[PageContent]:
+    pages: list[PageContent] = []
+    for i, page in enumerate(doc):
+        text = page.get_text("text").strip()
+        is_scanned = len(text) < MIN_TEXT_CHARS_PER_PAGE
+        pages.append(PageContent(page_number=i + 1, text=text, is_scanned=is_scanned))
     return pages
 
 
 def render_page_to_png(pdf_bytes: bytes, page_number: int, zoom: float = 2.0) -> bytes:
     """Render a page (1-indexed) to PNG bytes, used as OCR input for scanned pages."""
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        page = doc[page_number - 1]
-        matrix = fitz.Matrix(zoom, zoom)
-        pixmap = page.get_pixmap(matrix=matrix)
-        return pixmap.tobytes("png")
+        return render_document_page(doc, page_number, zoom)
+
+
+def render_document_page(doc: "fitz.Document", page_number: int, zoom: float = 2.0) -> bytes:
+    page = doc[page_number - 1]
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    return pixmap.tobytes("png")

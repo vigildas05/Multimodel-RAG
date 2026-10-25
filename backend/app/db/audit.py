@@ -1,9 +1,16 @@
 """Helpers for the append-only audit_log and security_events tables. Both take an open
 session so the record commits (or rolls back) together with the action it describes."""
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import AuditLog, SecurityEvent
+
+
+def record_security_event(session_factory: sessionmaker[Session], event_type: str, source: str, **kwargs) -> None:
+    """Write a security event in its own transaction (for decisions that aren't part of
+    a larger write, e.g. a rejected upload)."""
+    with session_factory.begin() as session:
+        add_security_event(session, event_type, source, **kwargs)
 
 
 def add_audit_log(

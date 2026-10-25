@@ -16,8 +16,15 @@ class InvalidFileTypeError(AppError):
 
 
 class FileTooLargeError(AppError):
-    status_code = 400
+    status_code = 413
     error_type = "file_too_large"
+
+
+class UploadRejectedError(AppError):
+    """A file that fails content validation or a processing limit. Message is user-facing."""
+
+    status_code = 422
+    error_type = "upload_rejected"
 
 
 class EmptyDocumentError(AppError):

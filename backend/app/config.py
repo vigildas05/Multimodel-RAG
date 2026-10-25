@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 25
     ALLOWED_EXTENSIONS: str = ".pdf,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.ogg,.flac"
 
+    # --- Upload limits ---
+    # Checked in the API before anything is stored:
+    MAX_DOCUMENTS_PER_WORKSPACE: int = 100
+    # Checked by the sandboxed parser in the worker:
+    MAX_PDF_PAGES: int = 100
+    MAX_IMAGE_PIXELS: int = 40_000_000
+    MAX_AUDIO_SECONDS: int = 1800
+    # Hard limits for each sandboxed parse (memory cap applies on Linux only).
+    PARSE_TIMEOUT_SECONDS: int = 60
+    PARSE_MEMORY_LIMIT_MB: int = 1536
+
     # --- Qdrant ---
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333

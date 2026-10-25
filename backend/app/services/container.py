@@ -128,6 +128,7 @@ def build_services(settings: Settings, session_factory: sessionmaker[Session], r
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
             upload_store=upload_store,
+            settings=settings,
         ),
         demo_service=DemoService(session_factory, vector_store, auth_service, settings, upload_store),
     )

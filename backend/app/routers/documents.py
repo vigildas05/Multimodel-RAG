@@ -8,16 +8,18 @@ from starlette.concurrency import run_in_threadpool
 from app.auth.dependencies import get_current_user
 from app.auth.service import AuthenticatedUser
 from app.config import Settings
-from app.core.exceptions import DocumentNotFoundError, QuotaExceededError
-from app.core.file_validation import (
-    classify_file_type,
-    new_document_id,
-    sanitize_filename,
-    validate_extension,
-    validate_size,
+from app.core.exceptions import (
+    DocumentNotFoundError,
+    FileTooLargeError,
+    InvalidFileTypeError,
+    QuotaExceededError,
+    UploadRejectedError,
 )
+from app.core.file_validation import new_document_id, sanitize_filename
+from app.db.audit import record_security_event
 from app.dependencies import get_app_settings, get_document_service, get_registry
 from app.ingestion.jobs import submit_document
+from app.ingestion.validation import read_upload_capped, validate_upload
 from app.models.document import DocumentRecord
 from app.schemas.document import (
     ChunkResponse,
@@ -58,16 +60,29 @@ async def upload_document(
     settings: Settings = Depends(get_app_settings),
     registry: DocumentRegistry = Depends(get_registry),
 ) -> DocumentUploadResponse:
-    if user.is_demo and await run_in_threadpool(registry.count) >= settings.DEMO_MAX_DOCUMENTS:
-        raise QuotaExceededError(f"Demo workspaces are limited to {settings.DEMO_MAX_DOCUMENTS} documents.")
-    ext = validate_extension(file.filename, settings)
-    file_bytes = await file.read()
-    validate_size(len(file_bytes), settings)
+    services = request.app.state.services
+    document_limit = settings.DEMO_MAX_DOCUMENTS if user.is_demo else settings.MAX_DOCUMENTS_PER_WORKSPACE
+    if await run_in_threadpool(registry.count) >= document_limit:
+        raise QuotaExceededError(f"This workspace is limited to {document_limit} documents.")
+
+    try:
+        file_bytes = await read_upload_capped(file, settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024)
+        file_type = validate_upload(file.filename, file_bytes, settings)
+    except (FileTooLargeError, InvalidFileTypeError, UploadRejectedError) as exc:
+        await run_in_threadpool(
+            record_security_event,
+            services.session_factory,
+            "upload_rejected",
+            "upload",
+            severity="low",
+            workspace_id=user.workspace_id,
+            user_id=user.user_id,
+            details={"reason": exc.error_type, "message": exc.message, "filename": sanitize_filename(file.filename)},
+        )
+        raise
 
     safe_name = sanitize_filename(file.filename)
-    file_type = classify_file_type(ext)
     document_id = new_document_id()
-    services = request.app.state.services
     storage_path = await run_in_threadpool(services.upload_store.save, user.workspace_id, file_bytes)
 
     record = DocumentRecord(

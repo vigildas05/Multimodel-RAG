@@ -19,7 +19,8 @@ from app.auth.service import AuthService, ClientInfo, normalize_email
 from app.auth.tokens import resolve_jwt_secret
 from app.config import get_settings
 from app.core.exceptions import AppError
-from app.core.file_validation import classify_file_type, new_document_id, sanitize_filename
+from app.core.file_validation import new_document_id, sanitize_filename
+from app.ingestion.validation import validate_upload
 from app.db.audit import add_audit_log
 from app.db.models import User
 from app.db.session import create_db_engine, create_session_factory
@@ -69,13 +70,14 @@ async def _seed_demo(args, settings, session_factory) -> int:
         await services.document_service.reset_workspace(scope)
 
     samples = sorted(p for p in Path(args.samples_dir).iterdir() if p.is_file())
-    allowed = settings.allowed_extensions_set
     failures = 0
     for path in samples:
-        if path.suffix.lower() not in allowed:
+        try:
+            file_type = validate_upload(path.name, path.read_bytes(), settings)  # same checks as uploads
+        except AppError as exc:
+            print(f"  skipped {path.name}: {exc.message}")
             continue
         document_id, filename = new_document_id(), sanitize_filename(path.name)
-        file_type = classify_file_type(path.suffix.lower())
         registry.create(
             DocumentRecord(
                 document_id=document_id,

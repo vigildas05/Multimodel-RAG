@@ -12,11 +12,13 @@ from starlette.concurrency import run_in_threadpool
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.exceptions import AppError, EmptyDocumentError
+from app.core.exceptions import AppError, EmptyDocumentError, UploadRejectedError
+from app.db.audit import record_security_event
+from app.config import Settings
 from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 from app.models.document import DocumentRecord
-from app.services import pdf_service
+from app.ingestion.sandbox import run_sandboxed
 from app.services.chunking_service import RecursiveChunker
 from app.services.embedding_service import EmbeddingService
 from app.services.llm.base import LLMProvider
@@ -48,6 +50,7 @@ class DocumentService:
         chunk_size: int,
         chunk_overlap: int,
         upload_store: UploadStore,
+        settings: Settings,
     ):
         self._session_factory = session_factory
         self._workspaces = WorkspaceRepository(session_factory)
@@ -60,6 +63,7 @@ class DocumentService:
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
         self._upload_store = upload_store
+        self._settings = settings
 
     def _registry(self, scope: TenantScope) -> DocumentRegistry:
         return DocumentRegistry(self._session_factory, scope.workspace_id)
@@ -84,16 +88,27 @@ class DocumentService:
         """
         try:
             if file_type == "pdf":
-                return await self.ingest_pdf(scope, document_id, filename, source_path.read_bytes(), force_ocr=force_ocr)
+                return await self.ingest_pdf(scope, document_id, filename, source_path, force_ocr=force_ocr)
             if file_type == "image":
-                return await self.ingest_image(scope, document_id, filename, source_path.read_bytes())
+                return await self.ingest_image(scope, document_id, filename, source_path)
             if file_type == "audio":
-                return await self.ingest_audio(scope, document_id, filename, str(source_path))
+                return await self.ingest_audio(scope, document_id, filename, source_path)
             raise ValueError(f"Unhandled file type: {file_type}")
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, AppError):
                 message = exc.message
                 logger.warning("Ingestion of %s failed: %s (%s)", document_id, exc.message, exc.detail)
+                if isinstance(exc, UploadRejectedError):
+                    await run_in_threadpool(
+                        record_security_event,
+                        self._session_factory,
+                        "upload_rejected",
+                        "ingestion",
+                        severity="medium",
+                        workspace_id=scope.workspace_id,
+                        user_id=scope.user_id,
+                        details={"document_id": document_id, "file_type": file_type, "message": exc.message},
+                    )
             else:
                 message = "Processing failed due to an internal error."
                 logger.exception("Ingestion of %s failed unexpectedly", document_id)
@@ -105,13 +120,16 @@ class DocumentService:
         scope: TenantScope,
         document_id: str,
         filename: str,
-        file_bytes: bytes,
+        source_path: Path,
         force_ocr: bool = False,
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
     ) -> DocumentRecord:
         size, overlap = chunk_size or self._chunk_size, chunk_overlap or self._chunk_overlap
-        pages = await run_in_threadpool(pdf_service.extract_pages, file_bytes)
+        parsed = await self._sandboxed(
+            "app.ingestion.parsers:parse_pdf", str(source_path), self._settings.MAX_PDF_PAGES, force_ocr
+        )
+        pages = parsed.pages
         if not pages:
             raise EmptyDocumentError("The uploaded PDF has no pages.")
 
@@ -123,7 +141,7 @@ class DocumentService:
             used_ocr = force_ocr or page.is_scanned
             if used_ocr:
                 any_ocr = True
-                png_bytes = await run_in_threadpool(pdf_service.render_page_to_png, file_bytes, page.page_number)
+                png_bytes = parsed.page_images[page.page_number]
                 ocr_text, _confidence = await run_in_threadpool(self._ocr_service.extract_text, png_bytes)
                 text = ocr_text or text
 
@@ -161,11 +179,14 @@ class DocumentService:
         scope: TenantScope,
         document_id: str,
         filename: str,
-        file_bytes: bytes,
+        source_path: Path,
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
     ) -> DocumentRecord:
         size, overlap = chunk_size or self._chunk_size, chunk_overlap or self._chunk_overlap
+        # Fully decode once inside the sandbox (pixel limit, corrupt files) before OCR/vision see it.
+        await self._sandboxed("app.ingestion.parsers:inspect_image", str(source_path), self._settings.MAX_IMAGE_PIXELS)
+        file_bytes = source_path.read_bytes()
 
         ocr_text, _confidence = await run_in_threadpool(self._ocr_service.extract_text, file_bytes)
         vision_description = await describe_image(self._llm_provider, file_bytes)
@@ -204,13 +225,15 @@ class DocumentService:
         scope: TenantScope,
         document_id: str,
         filename: str,
-        file_path: str,
+        source_path: Path,
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
     ) -> DocumentRecord:
         size, overlap = chunk_size or self._chunk_size, chunk_overlap or self._chunk_overlap
+        # Duration check in the sandbox, so an hours-long file is refused before transcription.
+        await self._sandboxed("app.ingestion.parsers:probe_audio", str(source_path), self._settings.MAX_AUDIO_SECONDS)
 
-        transcription = await run_in_threadpool(self._whisper_service.transcribe, file_path)
+        transcription = await run_in_threadpool(self._whisper_service.transcribe, str(source_path))
         if not transcription.segments:
             raise EmptyDocumentError("No speech was detected in this audio file.")
 
@@ -257,6 +280,15 @@ class DocumentService:
         if buffer_text:
             packed.append((buffer_text, buffer_start, buffer_end))
         return packed
+
+    async def _sandboxed(self, target: str, *args):
+        return await run_in_threadpool(
+            run_sandboxed,
+            target,
+            args,
+            self._settings.PARSE_TIMEOUT_SECONDS,
+            self._settings.PARSE_MEMORY_LIMIT_MB,
+        )
 
     async def _embed_and_store(self, scope: TenantScope, chunks: list[Chunk]) -> None:
         texts = [c.text for c in chunks]
