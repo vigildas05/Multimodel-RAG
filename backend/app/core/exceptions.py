@@ -80,6 +80,11 @@ class DemoUnavailableError(AppError):
     error_type = "demo_unavailable"
 
 
+class QueueUnavailableError(AppError):
+    status_code = 503
+    error_type = "queue_unavailable"
+
+
 class DatabaseUnavailableError(AppError):
     status_code = 503
     error_type = "database_unavailable"

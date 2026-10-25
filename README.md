@@ -152,13 +152,18 @@ cookies are configured for `localhost`).
 
 ### Day-to-day
 
-After the first setup, three terminals are enough:
+After the first setup, four terminals:
 
 ```bash
 docker compose up -d postgres redis qdrant      # repo root; also make sure Ollama is running
 cd backend && ./venv/Scripts/activate && uvicorn app.main:app --reload --port 8000
+cd backend && ./venv/Scripts/activate && arq app.worker.WorkerSettings     # processes uploads
 cd frontend && npm run dev
 ```
+
+Uploads show as *queued* until the worker processes them. Without the worker running they
+stay queued; set `INGEST_MODE=inline` in `backend/.env` to process uploads inside the API
+instead (fine for a quick try, but the API then loads OCR/Whisper itself).
 
 Run `alembic upgrade head` again after pulling changes that add migrations.
 

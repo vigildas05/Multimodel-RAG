@@ -27,18 +27,16 @@ class Template(TenantScope):
 
 
 @pytest.fixture
-def template(app, session_factory) -> Template:
+def template(app, session_factory, tmp_path) -> Template:
     """A demo template with one ingested sample PDF (re-created per test: the DB is wiped)."""
     scope = app.state.demo_service.ensure_template_scope()
     document_id = new_document_id()
     DocumentRegistry(session_factory, scope.workspace_id).create(
         DocumentRecord(document_id, "transformer.pdf", "pdf", "processing", now_iso())
     )
-    asyncio.run(
-        app.state.document_service.ingest_file(
-            scope, document_id, "transformer.pdf", "pdf", make_pdf(SAMPLE_TEXT), get_settings().upload_dir_path
-        )
-    )
+    source = tmp_path / "transformer.pdf"
+    source.write_bytes(make_pdf(SAMPLE_TEXT))
+    asyncio.run(app.state.document_service.ingest_file(scope, document_id, "transformer.pdf", "pdf", source))
     return Template(workspace_id=scope.workspace_id, user_id=scope.user_id, document_id=document_id)
 
 

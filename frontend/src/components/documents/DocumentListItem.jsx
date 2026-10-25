@@ -19,7 +19,11 @@ export default function DocumentListItem({ document, onDelete }) {
         <div className="text-xs text-slate-500">
           {document.status === 'failed'
             ? document.error_message || 'Processing failed'
-            : `${document.num_chunks} chunk${document.num_chunks === 1 ? '' : 's'}${
+            : document.status === 'queued'
+              ? 'Waiting to be processed…'
+              : document.status === 'processing'
+                ? 'Processing…'
+                : `${document.num_chunks} chunk${document.num_chunks === 1 ? '' : 's'}${
                 document.used_ocr ? ' · OCR' : ''
               }`}
         </div>

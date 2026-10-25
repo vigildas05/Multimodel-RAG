@@ -48,7 +48,7 @@ export default function UploadControl({ onUpload, uploading }) {
       />
       {uploading ? <LoadingSpinner size={18} className="text-emerald-400" /> : <Upload size={18} className="text-slate-400" />}
       <span className="text-xs text-slate-400">
-        {uploading ? 'Uploading & processing...' : 'Drop PDF, image, or audio — or click to browse'}
+        {uploading ? 'Uploading...' : 'Drop PDF, image, or audio — or click to browse'}
       </span>
     </div>
   )

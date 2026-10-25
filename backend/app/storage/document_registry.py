@@ -41,6 +41,9 @@ class DocumentRegistry:
                     num_pages=record.num_pages,
                     duration_seconds=record.duration_seconds,
                     used_ocr=record.used_ocr,
+                    storage_path=record.storage_path,
+                    size_bytes=record.size_bytes,
+                    sha256=record.sha256,
                     created_at=datetime.fromisoformat(record.upload_timestamp),
                 )
             )
@@ -84,6 +87,12 @@ class DocumentRegistry:
                 .order_by(Document.created_at.desc())
             )
             return [self._to_record(row) for row in rows]
+
+    def clear_storage_path(self, document_id: str) -> None:
+        with self._session_factory.begin() as session:
+            document = self._get_row(session, document_id)
+            if document is not None:
+                document.storage_path = None
 
     def count(self) -> int:
         with self._session_factory() as session:
@@ -136,4 +145,7 @@ class DocumentRegistry:
             num_pages=document.num_pages,
             duration_seconds=document.duration_seconds,
             used_ocr=document.used_ocr,
+            storage_path=document.storage_path,
+            size_bytes=document.size_bytes,
+            sha256=document.sha256,
         )

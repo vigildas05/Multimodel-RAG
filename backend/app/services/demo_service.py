@@ -27,6 +27,7 @@ from app.core.tenancy import TenantScope
 from app.db.audit import add_audit_log
 from app.db.models import AuditLog, Document, User, Workspace, WorkspaceMember
 from app.services.vector_store_service import VectorStoreService
+from app.storage.upload_store import UploadStore
 
 logger = logging.getLogger("app.services.demo")
 
@@ -47,11 +48,13 @@ class DemoService:
         vector_store: VectorStoreService,
         auth_service: AuthService,
         settings: Settings,
+        upload_store: UploadStore,
     ):
         self._session_factory = session_factory
         self._vector_store = vector_store
         self._auth_service = auth_service
         self._settings = settings
+        self._upload_store = upload_store
 
     # --- template ----------------------------------------------------------------------
 
@@ -216,6 +219,7 @@ class DemoService:
 
     def _delete_guest(self, scope: TenantScope) -> None:
         self._vector_store.delete_workspace(scope)
+        self._upload_store.delete_workspace(scope.workspace_id)
         with self._session_factory.begin() as session:
             user = session.get(User, scope.user_id)
             # Guard: only ever delete demo guests through this path.

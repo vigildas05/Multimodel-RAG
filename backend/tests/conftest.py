@@ -18,6 +18,8 @@ TEST_DATABASE_URL = os.environ.get(
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["QDRANT_COLLECTION"] = "test_document_chunks"
 os.environ["APP_ENV"] = "test"
+# Uploads are processed inside the request; tests/test_ingestion_queue.py covers the worker path.
+os.environ["INGEST_MODE"] = "inline"
 os.environ["JWT_SECRET_KEY"] = "test-only-signing-key-0123456789abcdef-not-a-real-secret"
 
 from alembic import command  # noqa: E402

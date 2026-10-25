@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import * as api from '../api/client'
 import { useAppContext } from '../context/AppContext'
 
+const POLL_INTERVAL_MS = 2000
+
 export function useDocuments() {
   const { state, dispatch } = useAppContext()
   const [uploading, setUploading] = useState(false)
@@ -19,6 +21,14 @@ export function useDocuments() {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // Uploads are processed in the background: poll while anything is still in flight.
+  const inFlight = state.documents.some((d) => d.status === 'queued' || d.status === 'processing')
+  useEffect(() => {
+    if (!inFlight) return undefined
+    const timer = setInterval(refresh, POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [inFlight, refresh])
 
   const upload = useCallback(
     async (file, opts) => {

@@ -12,8 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.exceptions import EmptyDocumentError
-from app.core.file_validation import build_stored_path
+from app.core.exceptions import AppError, EmptyDocumentError
 from app.core.tenancy import TenantScope
 from app.models.chunk import Chunk
 from app.models.document import DocumentRecord
@@ -26,6 +25,7 @@ from app.services.vector_store_service import VectorStoreService
 from app.services.vision_service import describe_image
 from app.services.whisper_service import WhisperService
 from app.storage.document_registry import DocumentRegistry
+from app.storage.upload_store import UploadStore
 from app.storage.workspace_repository import WorkspaceRepository
 
 logger = logging.getLogger("app.services.document")
@@ -47,6 +47,7 @@ class DocumentService:
         chunker: RecursiveChunker,
         chunk_size: int,
         chunk_overlap: int,
+        upload_store: UploadStore,
     ):
         self._session_factory = session_factory
         self._workspaces = WorkspaceRepository(session_factory)
@@ -58,6 +59,7 @@ class DocumentService:
         self._chunker = chunker
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
+        self._upload_store = upload_store
 
     def _registry(self, scope: TenantScope) -> DocumentRegistry:
         return DocumentRegistry(self._session_factory, scope.workspace_id)
@@ -71,23 +73,31 @@ class DocumentService:
         document_id: str,
         filename: str,
         file_type: str,
-        file_bytes: bytes,
-        upload_dir: Path,
+        source_path: Path,
         force_ocr: bool = False,
     ) -> DocumentRecord:
-        """Dispatch to the right modality; marks the document failed if ingestion raises."""
+        """Dispatch to the right modality; marks the document failed if ingestion raises.
+
+        Only an AppError's user-facing message is stored on the document. Anything else is
+        logged server-side and recorded as a generic failure, so internal details (paths,
+        library errors) never reach the client.
+        """
         try:
             if file_type == "pdf":
-                return await self.ingest_pdf(scope, document_id, filename, file_bytes, force_ocr=force_ocr)
+                return await self.ingest_pdf(scope, document_id, filename, source_path.read_bytes(), force_ocr=force_ocr)
             if file_type == "image":
-                return await self.ingest_image(scope, document_id, filename, file_bytes)
+                return await self.ingest_image(scope, document_id, filename, source_path.read_bytes())
             if file_type == "audio":
-                stored_path = build_stored_path(upload_dir, document_id, filename)
-                stored_path.write_bytes(file_bytes)
-                return await self.ingest_audio(scope, document_id, filename, str(stored_path))
+                return await self.ingest_audio(scope, document_id, filename, str(source_path))
             raise ValueError(f"Unhandled file type: {file_type}")
         except Exception as exc:  # noqa: BLE001
-            await run_in_threadpool(self._registry(scope).update_status, document_id, "failed", None, str(exc))
+            if isinstance(exc, AppError):
+                message = exc.message
+                logger.warning("Ingestion of %s failed: %s (%s)", document_id, exc.message, exc.detail)
+            else:
+                message = "Processing failed due to an internal error."
+                logger.exception("Ingestion of %s failed unexpectedly", document_id)
+            await run_in_threadpool(self._registry(scope).update_status, document_id, "failed", None, message)
             raise
 
     async def ingest_pdf(
@@ -284,8 +294,12 @@ class DocumentService:
         return record
 
     async def delete_document(self, scope: TenantScope, document_id: str) -> None:
+        registry = self._registry(scope)
+        record = await run_in_threadpool(registry.get, document_id)
         await run_in_threadpool(self._vector_store.delete_by_document_id, scope, document_id)
-        await run_in_threadpool(self._registry(scope).delete, document_id)
+        await run_in_threadpool(registry.delete, document_id)
+        if record is not None:
+            await run_in_threadpool(self._upload_store.delete, record.storage_path)
         await run_in_threadpool(self._workspaces.bump_corpus_version, scope.workspace_id)
 
     async def reset_workspace(self, scope: TenantScope) -> int:
@@ -294,5 +308,6 @@ class DocumentService:
         records = await run_in_threadpool(registry.list_all)
         await run_in_threadpool(self._vector_store.delete_workspace, scope)
         await run_in_threadpool(registry.reset)
+        await run_in_threadpool(self._upload_store.delete_workspace, scope.workspace_id)
         await run_in_threadpool(self._workspaces.bump_corpus_version, scope.workspace_id)
         return len(records)

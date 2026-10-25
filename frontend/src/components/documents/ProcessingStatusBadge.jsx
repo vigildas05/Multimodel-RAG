@@ -1,6 +1,7 @@
-import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, Loader2, XCircle } from 'lucide-react'
 
 const STATUS_MAP = {
+  queued: { icon: Clock, className: 'text-slate-400', label: 'Queued' },
   ready: { icon: CheckCircle2, className: 'text-emerald-400', label: 'Ready' },
   processing: { icon: Loader2, className: 'text-amber-400 animate-spin', label: 'Processing' },
   failed: { icon: XCircle, className: 'text-red-400', label: 'Failed' },

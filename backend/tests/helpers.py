@@ -52,7 +52,7 @@ def make_pdf(text: str) -> bytes:
 
 def upload_pdf(client: TestClient, text: str, filename: str = "doc.pdf") -> dict:
     resp = client.post("/documents/upload", files={"file": (filename, io.BytesIO(make_pdf(text)), "application/pdf")})
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 202, resp.text
     return resp.json()["document"]
 
 

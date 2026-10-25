@@ -32,7 +32,7 @@ def _upload_pdf(client) -> dict:
     resp = client.post(
         "/documents/upload", files={"file": ("bio.pdf", io.BytesIO(_make_test_pdf_bytes()), "application/pdf")}
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 202, resp.text
     return resp.json()["document"]
 
 

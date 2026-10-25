@@ -26,6 +26,7 @@ from app.db.session import create_db_engine, create_session_factory
 from app.models.document import DocumentRecord
 from app.services.document_service import now_iso
 from app.storage.document_registry import DocumentRegistry
+from app.storage.upload_store import UploadStore
 
 DEFAULT_SAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
 
@@ -85,9 +86,7 @@ async def _seed_demo(args, settings, session_factory) -> int:
             )
         )
         try:
-            record = await services.document_service.ingest_file(
-                scope, document_id, filename, file_type, path.read_bytes(), settings.upload_dir_path
-            )
+            record = await services.document_service.ingest_file(scope, document_id, filename, file_type, path)
             print(f"  ok      {filename}: {record.num_chunks} chunks")
         except AppError as exc:
             failures += 1
@@ -104,7 +103,8 @@ def _cleanup_demo(settings, session_factory) -> int:
         settings.QDRANT_HOST, settings.QDRANT_PORT, settings.QDRANT_COLLECTION, settings.EMBEDDING_DIM
     )
     auth = AuthService(session_factory, settings, resolve_jwt_secret(settings))
-    removed = DemoService(session_factory, vector_store, auth, settings).cleanup_expired()
+    upload_store = UploadStore(Path(settings.UPLOAD_DIR))
+    removed = DemoService(session_factory, vector_store, auth, settings, upload_store).cleanup_expired()
     print(f"Removed {removed} expired demo workspaces.")
     return 0
 

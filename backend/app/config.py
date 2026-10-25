@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 5
 
+    # --- Background processing ---
+    REDIS_URL: str = "redis://localhost:6379/0"
+    # "queue": uploads are processed by the arq worker (`arq app.worker.WorkerSettings`).
+    # "inline": processed inside the upload request (tests, or a quick run without a worker).
+    INGEST_MODE: str = "queue"
+    INGEST_JOB_TIMEOUT_SECONDS: int = 900
+    WORKER_MAX_JOBS: int = 2
+
     # --- Storage ---
     DATA_DIR: str = "data"
     UPLOAD_DIR: str = "data/uploads"

@@ -1,6 +1,7 @@
+import hashlib
 import logging
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Request, UploadFile
 from fastapi.param_functions import Query
 from starlette.concurrency import run_in_threadpool
 
@@ -16,6 +17,7 @@ from app.core.file_validation import (
     validate_size,
 )
 from app.dependencies import get_app_settings, get_document_service, get_registry
+from app.ingestion.jobs import submit_document
 from app.models.document import DocumentRecord
 from app.schemas.document import (
     ChunkResponse,
@@ -47,14 +49,14 @@ def _to_schema(record: DocumentRecord) -> DocumentMetadata:
     )
 
 
-@router.post("/upload", response_model=DocumentUploadResponse)
+@router.post("/upload", response_model=DocumentUploadResponse, status_code=202)
 async def upload_document(
+    request: Request,
     file: UploadFile,
     force_ocr: bool = Query(default=False),
     user: AuthenticatedUser = Depends(get_current_user),
     settings: Settings = Depends(get_app_settings),
     registry: DocumentRegistry = Depends(get_registry),
-    document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentUploadResponse:
     if user.is_demo and await run_in_threadpool(registry.count) >= settings.DEMO_MAX_DOCUMENTS:
         raise QuotaExceededError(f"Demo workspaces are limited to {settings.DEMO_MAX_DOCUMENTS} documents.")
@@ -65,20 +67,25 @@ async def upload_document(
     safe_name = sanitize_filename(file.filename)
     file_type = classify_file_type(ext)
     document_id = new_document_id()
+    services = request.app.state.services
+    storage_path = await run_in_threadpool(services.upload_store.save, user.workspace_id, file_bytes)
 
     record = DocumentRecord(
         document_id=document_id,
         filename=safe_name,
         file_type=file_type,
-        status="processing",
+        status="queued",
         upload_timestamp=now_iso(),
+        storage_path=storage_path,
+        size_bytes=len(file_bytes),
+        sha256=hashlib.sha256(file_bytes).hexdigest(),
     )
-    registry.create(record)
+    await run_in_threadpool(registry.create, record)
+    await submit_document(services, settings, user.scope, document_id, force_ocr)
 
-    updated = await document_service.ingest_file(
-        user.scope, document_id, safe_name, file_type, file_bytes, settings.upload_dir_path, force_ocr=force_ocr
-    )
-    return DocumentUploadResponse(document=_to_schema(updated))
+    # "queued" in queue mode (the worker picks it up; clients poll GET /documents),
+    # already "ready"/"failed" in inline mode.
+    return DocumentUploadResponse(document=_to_schema(await run_in_threadpool(registry.get, document_id)))
 
 
 @router.get("", response_model=DocumentListResponse)
