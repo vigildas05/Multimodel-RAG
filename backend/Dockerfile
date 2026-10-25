@@ -12,6 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY security ./security
 COPY eval ./eval
 COPY alembic.ini ./
 COPY migrations ./migrations
