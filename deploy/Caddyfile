@@ -1,8 +1,6 @@
 # Reverse proxy with automatic HTTPS (Let's Encrypt) for the API.
-# API_DOMAIN and ACME_EMAIL come from deploy/.env.prod (see compose.prod.yml).
-{
-	email {$ACME_EMAIL}
-}
+# API_DOMAIN comes from deploy/.env.prod (see compose.prod.yml). Certificates are issued
+# and renewed automatically; no ACME account email is needed.
 
 {$API_DOMAIN} {
 	encode zstd gzip

@@ -126,7 +126,7 @@ Credits are granted only from the signed webhook, never from the browser's check
 
 1. Import the GitHub repository; set **Root Directory** to `frontend` (Vite is detected).
 2. Environment variable: `VITE_API_BASE_URL=https://api.<domain>`.
-3. In `frontend/vercel.json`, replace `https://api.example.com` in `connect-src` with your API
+3. In `frontend/vercel.json`, set `connect-src` to your API
    origin, so the Content-Security-Policy allows the API calls. Commit and push.
 4. Add the custom domain `app.<domain>`.
 
