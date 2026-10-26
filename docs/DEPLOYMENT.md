@@ -117,8 +117,10 @@ To enable test payments:
    events `payment.captured`, `order.paid`, `payment.failed`.
 3. Put the key ID, key secret and webhook secret in `deploy/.env.prod`, then
    `docker compose --env-file .env.prod -f compose.prod.yml up -d`.
-4. Buy a pack on the Billing page with test card `4111 1111 1111 1111`, any future expiry and
-   CVV. Credits appear when the webhook arrives (usually within seconds).
+4. Buy a pack on the Billing page: in Razorpay Checkout choose **Netbanking**, any bank, then
+   **Success** (or domestic test card `5267 3181 8797 5449`, or UPI `success@razorpay`).
+   `4111 1111 1111 1111` is an international card and is declined unless the Razorpay account
+   accepts international payments. Credits appear when the webhook arrives (usually within seconds).
 
 Credits are granted only from the signed webhook, never from the browser's checkout callback.
 

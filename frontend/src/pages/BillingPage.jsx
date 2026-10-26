@@ -115,10 +115,16 @@ export default function BillingPage() {
 
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          <span>
-            <strong>TEST MODE: use Razorpay test cards, no real money.</strong> For example card 4111 1111 1111 1111,
-            any future expiry, any CVV. Nothing you enter here is charged.
-          </span>
+          <div className="space-y-1">
+            <p>
+              <strong>TEST MODE: no real money.</strong> In the payment window choose <strong>Netbanking</strong>,
+              pick any bank, then click <strong>Success</strong>.
+            </p>
+            <p className="text-xs text-amber-200/80">
+              Also works: domestic test card 5267 3181 8797 5449 (any future expiry, any CVV), or UPI ID
+              success@razorpay. International cards such as 4111 1111 1111 1111 are declined.
+            </p>
+          </div>
         </div>
 
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
