@@ -85,8 +85,11 @@ class VectorStoreService:
             WORKSPACE_FIELD,
             field_schema=KeywordIndexParams(type=KeywordIndexType.KEYWORD, is_tenant=True),
         )
+        # Every payload field used in a filter needs an index: Qdrant Cloud runs in strict
+        # mode and rejects filtering on unindexed fields (tests enable the same mode).
         self._client.create_payload_index(self._collection_name, "document_id", field_schema="keyword")
         self._client.create_payload_index(self._collection_name, "file_type", field_schema="keyword")
+        self._client.create_payload_index(self._collection_name, "quarantined", field_schema="bool")
 
     def health_check(self) -> bool:
         """Reachability only (lists collection names); touches no tenant data."""
