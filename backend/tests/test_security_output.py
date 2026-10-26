@@ -13,6 +13,7 @@ from security.gateway import SecurityGateway
 from security.output import (
     detect_leak,
     luhn_valid,
+    normalize_citations,
     redact_pii,
     scan_output,
     strip_images,
@@ -248,3 +249,25 @@ def test_llm_receives_the_spotlighted_prompt(app, workspace, monkeypatch):
     assert re.search(r"SNTL-[0-9a-f]{16}", system)
     assert '<document id="1"' in user and "<question>" in user
     assert "<system>" not in user and "‹system" in user  # document's tag neutralised
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("ATP comes from mitochondria【1】.", "ATP comes from mitochondria[1]."),
+        ("See 【2†L3-L5】 and 【1, 3】.", "See [2] and [1, 3]."),
+        ("Full-width comma 【1，2】", "Full-width comma [1, 2]"),
+        ("No number 【source】 stays", "No number 【source】 stays"),
+    ],
+)
+def test_lenticular_citations_are_normalized(raw, expected):
+    assert normalize_citations(raw) == expected
+
+
+def test_lenticular_citations_are_verified_like_brackets():
+    from security.output import scan_output
+    from security.prompt import PromptBundle
+
+    bundle = PromptBundle(system_prompt="s", user_prompt="u", source_count=2)
+    out = scan_output("Fact【1】 and invented【7†x】.", bundle, pii_redaction=False)
+    assert out.text == "Fact[1] and invented." and out.invalid_citations == [7]

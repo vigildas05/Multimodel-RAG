@@ -32,6 +32,7 @@ def get_llm_provider(settings: Settings) -> LLMProvider:
                 api_key=settings.LLM_API_KEY,
                 model=settings.LLM_MODEL,
                 vision_model=settings.LLM_VISION_MODEL,
+                reasoning_effort=settings.LLM_REASONING_EFFORT,
                 timeout=settings.LLM_TIMEOUT_SECONDS,
             )
         else:

@@ -186,6 +186,9 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_MODEL: str = ""
     LLM_VISION_MODEL: str = ""
+    # Reasoning models (e.g. Groq's openai/gpt-oss-*) spend output tokens on hidden reasoning;
+    # "low" keeps that from exhausting the answer budget. Empty: not sent.
+    LLM_REASONING_EFFORT: str = ""
     LLM_TIMEOUT_SECONDS: float = 60.0
 
     # --- Whisper ---

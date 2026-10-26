@@ -110,3 +110,15 @@ def test_factory_builds_it_from_settings():
         assert (built.provider_name, built.model_name) == ("openai_compatible", "m")
     finally:
         factory.reset_provider_for_testing()
+
+
+@pytest.mark.parametrize("effort,expected", [("low", "low"), ("", None), (None, None)])
+def test_reasoning_effort_is_sent_only_when_configured(effort, expected):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]})
+
+    run(provider(handler, reasoning_effort=effort).generate("s", "u", temperature=0.2, top_p=0.9, max_output_tokens=50))
+    assert seen["body"].get("reasoning_effort") == expected

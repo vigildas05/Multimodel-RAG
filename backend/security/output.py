@@ -134,8 +134,14 @@ def redact_pii(text: str) -> tuple[str, dict[str, int]]:
 # --- citations & images ---------------------------------------------------------------
 
 _CITATION_GROUP = re.compile(r"\[(\s*\d+\s*(?:,\s*\d+\s*)*)\]")
+# Some models (e.g. gpt-oss) cite as 【1】 or 【1†source】 instead of [1].
+_LENTICULAR_CITATION = re.compile(r"【\s*(\d+(?:\s*[,，]\s*\d+)*)\s*(?:†[^】]*)?】")
 _MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _HTML_IMAGE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+
+
+def normalize_citations(text: str) -> str:
+    return _LENTICULAR_CITATION.sub(lambda m: "[" + re.sub(r"\s*[,，]\s*", ", ", m.group(1)) + "]", text)
 
 
 def verify_citations(text: str, source_count: int) -> tuple[str, list[int]]:
@@ -162,7 +168,7 @@ def scan_output(text: str, bundle: PromptBundle, pii_redaction: bool = True) -> 
     if leak:
         return OutputResult(text="", blocked=True, leak_reasons=leak, latency_ms=(time.perf_counter() - started) * 1000)
     text, removed_images = strip_images(text)
-    text, invalid = verify_citations(text, bundle.source_count)
+    text, invalid = verify_citations(normalize_citations(text), bundle.source_count)
     counts: dict[str, int] = {}
     if pii_redaction:
         text, counts = redact_pii(text)

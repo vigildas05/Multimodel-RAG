@@ -66,7 +66,7 @@ first start.
 
 | Provider | `LLM_BASE_URL` | Example `LLM_MODEL` |
 |---|---|---|
-| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
+| Groq | `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` (with `LLM_REASONING_EFFORT=low`) |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.0-flash` |
 | NVIDIA NIM | `https://integrate.api.nvidia.com/v1` | `meta/llama-3.3-70b-instruct` |
 

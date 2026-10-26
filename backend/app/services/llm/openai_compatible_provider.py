@@ -28,6 +28,7 @@ class OpenAICompatibleProvider(LLMProvider):
         api_key: str,
         model: str,
         vision_model: str | None = None,
+        reasoning_effort: str | None = None,
         timeout: float = 60.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ):
@@ -39,6 +40,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self.model_name = model
         self._vision_model = vision_model or None
+        self._reasoning_effort = reasoning_effort or None
         self._timeout = timeout
         self._transport = transport  # tests inject a mock transport
 
@@ -50,18 +52,19 @@ class OpenAICompatibleProvider(LLMProvider):
         top_p: float,
         max_output_tokens: int,
     ) -> LLMGenerationResult:
-        data = await self._chat(
-            {
-                "model": self.model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": temperature,
-                "top_p": top_p,
-                "max_tokens": max_output_tokens,
-            }
-        )
+        payload = {
+            "model": self.model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_output_tokens,
+        }
+        if self._reasoning_effort:
+            payload["reasoning_effort"] = self._reasoning_effort
+        data = await self._chat(payload)
         choice = (data.get("choices") or [{}])[0]
         return LLMGenerationResult(
             text=(choice.get("message") or {}).get("content") or "",
