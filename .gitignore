@@ -33,3 +33,4 @@ frontend/.vite/
 
 # Claude Code local settings
 .claude/settings.local.json
+.neon

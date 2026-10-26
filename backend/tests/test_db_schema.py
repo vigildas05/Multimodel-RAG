@@ -48,3 +48,18 @@ def test_document_requires_existing_workspace(session_factory):
                 )
             )
 
+
+
+@pytest.mark.parametrize(
+    "given,expected",
+    [
+        ("postgresql://u:p@ep-x.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
+         "postgresql+psycopg://u:p@ep-x.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"),
+        ("postgres://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("postgresql+psycopg://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+    ],
+)
+def test_database_url_uses_psycopg3(given, expected):
+    from app.config import Settings
+
+    assert Settings(DATABASE_URL=given).DATABASE_URL == expected

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,9 +65,20 @@ class Settings(BaseSettings):
     DEMO_MAX_STARTS_PER_IP_PER_HOUR: int = 5
 
     # --- Database ---
-    # SQLAlchemy URL; psycopg 3 driver. For Neon, append ?sslmode=require.
+    # Postgres URL. Neon's pooled DATABASE_URL works as-is (postgresql://...?sslmode=require);
+    # the psycopg 3 driver is selected automatically.
     DATABASE_URL: str = "postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel"
     DB_POOL_SIZE: int = 5
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _use_psycopg3(cls, url: str) -> str:
+        # Neon and most hosts hand out plain postgresql:// (or postgres://) URLs, which
+        # SQLAlchemy would map to psycopg2. Select the installed psycopg 3 driver instead.
+        for prefix in ("postgresql://", "postgres://"):
+            if url.startswith(prefix):
+                return "postgresql+psycopg://" + url[len(prefix):]
+        return url
     DB_MAX_OVERFLOW: int = 5
 
     # --- LLM security gateway (backend/security) ---
